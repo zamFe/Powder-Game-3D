@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:danball.fandom.com)",
+      "WebFetch(domain:dan-ball.jp)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}

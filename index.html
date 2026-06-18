@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Powder Game</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<aside id="sidebar">
+  <h1>POWDER<span>GAME</span></h1>
+
+  <div class="section" id="elements-section">
+    <h2>Elements</h2>
+    <div id="palette" class="btn-grid"></div>
+  </div>
+
+  <div class="section">
+    <h2>Tools</h2>
+    <div id="tools" class="btn-grid"></div>
+  </div>
+
+  <div class="section">
+    <h2>Pen</h2>
+    <div id="pen-sizes" class="btn-row"></div>
+  </div>
+
+  <div class="section">
+    <h2>Options</h2>
+    <div class="opt-row"><label>Scale</label><div id="scale-btns" class="btn-row"></div></div>
+    <div class="opt-row"><label>Speed</label><div id="speed-btns" class="btn-row"></div></div>
+    <div class="opt-row"><label>BG</label><select id="bg-select"></select></div>
+    <div class="opt-row"><label>Liquid</label><div id="liquid-btns" class="btn-row"></div></div>
+    <div class="opt-row"><label>Waves</label><div id="waves-btns" class="btn-row"></div></div>
+    <div class="opt-row"><label>Width</label><input id="sl-w" type="range" min="25" max="100" value="100"><span class="val" id="sl-w-val">100%</span></div>
+    <div class="opt-row"><label>Height</label><input id="sl-h" type="range" min="25" max="100" value="100"><span class="val" id="sl-h-val">100%</span></div>
+    <div class="opt-row"><label>Depth</label><input id="sl-d" type="range" min="16" max="256" value="48"><span class="val" id="sl-d-val">48</span></div>
+  </div>
+
+  <div class="section">
+    <h2>3D Mode</h2>
+    <div class="btn-row actions"><button id="btn-3d">Enter 3D</button></div>
+    <div id="threed-controls" class="hidden">
+      <div class="opt-row"><label>Draw</label><div id="draw3d-btns" class="btn-row"></div></div>
+      <div class="opt-row"><label>Slice</label><div class="btn-row">
+        <button id="slice-minus">&#8722;</button><button id="slice-val" disabled>0</button><button id="slice-plus">+</button>
+      </div></div>
+      <div class="help">Drag outside box (or middle-drag / Q E): rotate 360&deg;<br>Wheel: zoom &middot; [ ]: slice</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="btn-row actions">
+      <button id="btn-pause">&#10074;&#10074; Pause</button>
+      <button id="btn-clear">Clear</button>
+    </div>
+    <div class="btn-row actions">
+      <button id="btn-save">Save</button>
+      <button id="btn-load">Load</button>
+    </div>
+  </div>
+
+  <div class="section" id="info">
+    <div><span id="stat-fps">0</span> fps &middot; <span id="stat-parts">0</span> dots</div>
+    <div class="help">
+      Left-drag: draw &middot; Right-drag: erase<br>
+      Player: &#8592;&#8594; move, &#8593; jump, X shoot<br>
+      In 3D: W / S walk into / out of the box.<br>
+      Player head absorbs elements it touches.
+    </div>
+  </div>
+</aside>
+
+<script src="js/elements.js?v=3"></script>
+<script src="js/backgrounds.js?v=3"></script>
+<script src="js/air.js?v=3"></script>
+<script src="js/engine.js?v=3"></script>
+<script src="js/behaviors.js?v=3"></script>
+<script src="js/engine3d.js?v=3"></script>
+<script src="js/behaviors3d.js?v=3"></script>
+<script src="js/render3d.js?v=3"></script>
+<script src="js/player.js?v=3"></script>
+<script src="js/render.js?v=3"></script>
+<script src="js/ui.js?v=3"></script>
+</body>
+</html>
