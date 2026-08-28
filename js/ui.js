@@ -3,6 +3,7 @@
   const E = PG.E, els = PG.elements;
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
+  const $ = id => document.getElementById(id);
 
   PG.scale = 4;
   PG.speed = 1;        // sim steps per frame
@@ -31,13 +32,22 @@
     PG.viewOffY = Math.max(0, canvas.height - PG.H * PG.scale);
   }
 
+  // Re-fit the backing store to the stage and re-derive the grid size. Keeps
+  // whatever mode you're in: a window resize or a scale change no longer
+  // throws away a 3D scene.
   function rebuild() {
-    instantExit3D();
-    const vw = window.innerWidth - 216, vh = window.innerHeight;
+    const vw = Math.max(1, canvas.clientWidth), vh = Math.max(1, canvas.clientHeight);
     canvas.width = vw; canvas.height = vh;
     const [tw, th] = targetDims();
-    if (PG.type) PG.resizeGrid(tw, th); // keep the scene across resizes
-    else PG.initGrid(tw, th);
+    if (PG.mode3d) {
+      PG.resizeGrid3(tw, th, PG.D);
+      syncDepthUI();
+      setFocusZ(PG.v3.focusZ);
+    } else if (PG.type) {
+      PG.resizeGrid(tw, th); // keep the scene across resizes
+    } else {
+      PG.initGrid(tw, th);
+    }
     updateViewOffsets();
     PG.initRender();
   }
@@ -79,7 +89,12 @@
   }
 
   function applyTool(cx, cy, dx, dy, isErase) {
-    if (isErase) { stamp(cx, cy, 0, true); return; }
+    if (isErase) {
+      // right-click with the player tool picks the player back up
+      if (current.kind === "tool" && current.id === "player" && PG.player) PG.player = null;
+      stamp(cx, cy, 0, true);
+      return;
+    }
     if (current.kind === "tool") {
       switch (current.id) {
         case "wind": {
@@ -175,7 +190,11 @@
   }
 
   function applyTool3At(g, gd, isErase) {
-    if (isErase) { stamp3(g[0], g[1], g[2], 0, true); return; }
+    if (isErase) {
+      if (current.kind === "tool" && current.id === "player" && PG.player) PG.player = null;
+      stamp3(g[0], g[1], g[2], 0, true);
+      return;
+    }
     if (current.kind === "tool") {
       switch (current.id) {
         case "wind":
@@ -210,6 +229,7 @@
   }
   canvas.addEventListener("pointerdown", ev => {
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* synthetic events */ }
+    dismissHint();
     const [mx, my] = screenPos(ev);
     // orbit the camera: middle-drag anywhere, or left-drag started outside the box
     if (PG.mode3d && (ev.button === 1 || (ev.button === 0 && outsideBox(mx, my)))) {
@@ -231,6 +251,7 @@
     applyTool(cx, cy, 0, 0, drawing === 2);
   });
   canvas.addEventListener("pointermove", ev => {
+    moveBrush(ev);
     if (orbiting) {
       const [mx, my] = screenPos(ev);
       PG.v3.yaw += (mx - lastPX) * 0.008;                                  // full 360, no clamp
@@ -277,19 +298,66 @@
   const stopDraw = () => { drawing = 0; orbiting = false; lastG3 = null; };
   canvas.addEventListener("pointerup", stopDraw);
   canvas.addEventListener("pointercancel", stopDraw);
+  // alt-tabbing mid-stroke used to leave the brush latched down
+  window.addEventListener("blur", () => { stopDraw(); PG.keys = {}; });
   canvas.addEventListener("wheel", ev => {
     if (!PG.mode3d) return;
     ev.preventDefault();
     PG.v3.zoom = Math.max(0.3, Math.min(3.5, PG.v3.zoom * (ev.deltaY < 0 ? 1.1 : 0.9)));
   }, { passive: false });
 
+  // ---- brush preview -------------------------------------------------------
+  const brushEl = $("brush");
+  function brushDiameter() { return (2 * Math.max(1, penSize / 2) + 1) * PG.scale; }
+  function moveBrush(ev) {
+    if (PG.mode3d) { brushEl.classList.add("hidden"); return; } // no circular footprint in 3D
+    const [mx, my] = screenPos(ev);
+    const d = brushDiameter();
+    brushEl.style.width = brushEl.style.height = d + "px";
+    brushEl.style.left = mx + "px";
+    brushEl.style.top = my + "px";
+    brushEl.classList.remove("hidden");
+  }
+  canvas.addEventListener("pointerleave", () => brushEl.classList.add("hidden"));
+
+  const hintEl = $("hint");
+  let hintGone = false;
+  function dismissHint() {
+    if (hintGone) return;
+    hintGone = true;
+    hintEl.classList.add("gone");
+    setTimeout(() => hintEl.classList.add("hidden"), 500);
+  }
+  setTimeout(dismissHint, 9000);
+
+  // ---- toast ---------------------------------------------------------------
+  const toastEl = $("toast");
+  let toastTimer = null;
+  function toast(msg, warn) {
+    toastEl.textContent = msg;
+    toastEl.classList.toggle("warn", !!warn);
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2200);
+  }
+
   // ---- keyboard ----------------------------------------------------------
+  function isTyping(ev) {
+    const t = ev.target;
+    return !!t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA");
+  }
   window.addEventListener("keydown", ev => {
+    if (ev.key === "Escape") { closeHelp(); return; }
+    if (isTyping(ev)) return;              // don't steer the player while filtering
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
     PG.keys[ev.key] = true;
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(ev.key)) {
       ev.preventDefault();
     }
-    if (ev.key === "p") togglePause();
+    if (ev.key === "p" || ev.key === "P") togglePause();
+    if (ev.key === "?") { ev.preventDefault(); toggleHelp(); }
+    if (ev.key === "/") { ev.preventDefault(); searchEl.focus(); searchEl.select(); }
+    if (ev.key >= "1" && ev.key <= "5") setPen(PEN_SIZES[+ev.key - 1]);
     if (PG.mode3d) {
       if (ev.key === "[") setFocusZ(PG.v3.focusZ - 1);
       if (ev.key === "]") setFocusZ(PG.v3.focusZ + 1);
@@ -300,35 +368,69 @@
   // ---- sidebar -----------------------------------------------------------
   function makeBtn(parent, label, swatchColor, onClick) {
     const btn = document.createElement("button");
+    btn.type = "button";
     if (swatchColor) {
       const sw = document.createElement("span");
       sw.className = "swatch";
       sw.style.background = swatchColor;
+      sw.style.color = swatchColor;
       btn.appendChild(sw);
     }
-    btn.appendChild(document.createTextNode(label));
+    const text = document.createElement("span");
+    text.textContent = label;
+    btn.appendChild(text);
+    btn.title = label;
     btn.addEventListener("click", onClick);
     parent.appendChild(btn);
     return btn;
   }
   function selectIn(container, btn) {
-    container.querySelectorAll("button").forEach(b => b.classList.remove("selected"));
+    container.querySelectorAll("button").forEach(b => {
+      b.classList.remove("selected");
+      b.setAttribute("aria-pressed", "false");
+    });
     btn.classList.add("selected");
+    btn.setAttribute("aria-pressed", "true");
   }
+  // A real click leaves focus on the button, so a later Enter/Space re-fires it
+  // (press Clear, hit Enter, lose the scene). Drop focus after pointer clicks
+  // only — keyboard users keep theirs.
+  document.getElementById("sidebar").addEventListener("click", ev => {
+    const b = ev.target.closest("button");
+    if (b && ev.detail > 0) b.blur();
+  });
 
-  const paletteEl = document.getElementById("palette");
-  const toolsEl = document.getElementById("tools");
+  const paletteEl = $("palette");
+  const toolsEl = $("tools");
+  const selChip = $("stat-sel");
+
+  function setBrushLabel(name, color) {
+    selChip.textContent = name;
+    selChip.title = "Brush: " + name;
+    selChip.style.setProperty("--sw", color);
+  }
   function clearSelections() {
-    paletteEl.querySelectorAll("button").forEach(b => b.classList.remove("selected"));
-    toolsEl.querySelectorAll("button").forEach(b => b.classList.remove("selected"));
+    paletteEl.querySelectorAll("button").forEach(b => {
+      b.classList.remove("selected"); b.setAttribute("aria-pressed", "false");
+    });
+    toolsEl.querySelectorAll("button").forEach(b => {
+      b.classList.remove("selected"); b.setAttribute("aria-pressed", "false");
+    });
+  }
+  function choose(btn, next, name, color) {
+    current = next;
+    clearSelections();
+    btn.classList.add("selected");
+    btn.setAttribute("aria-pressed", "true");
+    setBrushLabel(name, color);
   }
 
   for (const id of PG.paletteOrder) {
     const el = els[id];
-    const btn = makeBtn(paletteEl, el.name, el.color, () => {
-      current = { kind: "element", id };
-      clearSelections(); btn.classList.add("selected");
-    });
+    const btn = makeBtn(paletteEl, el.name, el.color,
+      () => choose(btn, { kind: "element", id }, el.name, el.color));
+    btn.dataset.name = el.name;
+    btn.setAttribute("aria-pressed", String(id === E.POWDER));
     if (id === E.POWDER) btn.classList.add("selected");
   }
 
@@ -337,37 +439,78 @@
     ["erase", "#222", "erase"], ["player", "#fff", "player"],
   ];
   for (const [tid, color, label] of toolDefs) {
-    const btn = makeBtn(toolsEl, label, color, () => {
-      current = { kind: "tool", id: tid };
-      clearSelections(); btn.classList.add("selected");
-    });
+    const btn = makeBtn(toolsEl, label, color,
+      () => choose(btn, { kind: "tool", id: tid }, label, color));
+    btn.setAttribute("aria-pressed", "false");
   }
 
-  const penEl = document.getElementById("pen-sizes");
-  for (const s of [1, 2, 4, 8, 16]) {
-    const btn = makeBtn(penEl, String(s), null, () => {
-      penSize = s; selectIn(penEl, btn);
-    });
+  // ---- element filter --------------------------------------------------------
+  const searchEl = $("palette-search");
+  const paletteCountEl = $("palette-count");
+  const paletteEmptyEl = $("palette-empty");
+  const paletteBtns = [...paletteEl.querySelectorAll("button")];
+
+  function applyFilter() {
+    const q = searchEl.value.trim().toLowerCase();
+    let shown = 0;
+    for (const b of paletteBtns) {
+      const hit = !q || b.dataset.name.includes(q);
+      b.classList.toggle("hidden", !hit);
+      if (hit) shown++;
+    }
+    paletteEmptyEl.classList.toggle("hidden", shown > 0);
+    paletteCountEl.textContent = q ? shown + " / " + paletteBtns.length : paletteBtns.length;
+  }
+  searchEl.addEventListener("input", applyFilter);
+  searchEl.addEventListener("keydown", ev => {
+    if (ev.key === "Enter") { // jump straight to the first match
+      const first = paletteBtns.find(b => !b.classList.contains("hidden"));
+      if (first) { first.click(); searchEl.blur(); }
+    } else if (ev.key === "Escape") {
+      if (searchEl.value) { searchEl.value = ""; applyFilter(); }
+      else searchEl.blur();
+      ev.stopPropagation();
+    }
+  });
+  applyFilter();
+
+  // ---- pen / options ----------------------------------------------------------
+  const PEN_SIZES = [1, 2, 4, 8, 16];
+  const penEl = $("pen-sizes");
+  const penBtns = new Map();
+  function setPen(s) {
+    if (!penBtns.has(s)) return;
+    penSize = s;
+    selectIn(penEl, penBtns.get(s));
+    const d = brushDiameter();
+    brushEl.style.width = brushEl.style.height = d + "px";
+  }
+  for (const s of PEN_SIZES) {
+    const btn = makeBtn(penEl, String(s), null, () => setPen(s));
+    btn.setAttribute("aria-pressed", String(s === penSize));
+    penBtns.set(s, btn);
     if (s === penSize) btn.classList.add("selected");
   }
 
-  const scaleEl = document.getElementById("scale-btns");
+  const scaleEl = $("scale-btns");
   for (const s of [2, 3, 4, 6]) {
     const btn = makeBtn(scaleEl, s + "px", null, () => {
       PG.scale = s; selectIn(scaleEl, btn); rebuild();
     });
+    btn.setAttribute("aria-pressed", String(s === PG.scale));
     if (s === PG.scale) btn.classList.add("selected");
   }
 
-  const speedEl = document.getElementById("speed-btns");
+  const speedEl = $("speed-btns");
   for (const s of [1, 2, 4]) {
     const btn = makeBtn(speedEl, s + "x", null, () => {
       PG.speed = s; selectIn(speedEl, btn);
     });
+    btn.setAttribute("aria-pressed", String(s === PG.speed));
     if (s === PG.speed) btn.classList.add("selected");
   }
 
-  const bgSel = document.getElementById("bg-select");
+  const bgSel = $("bg-select");
   PG.BG_NAMES.forEach((name, idx) => {
     const opt = document.createElement("option");
     opt.value = idx; opt.textContent = name;
@@ -376,44 +519,44 @@
   bgSel.value = PG.bgMode;
   bgSel.addEventListener("change", () => { PG.bgMode = +bgSel.value; });
 
-  const wavesEl = document.getElementById("waves-btns");
+  const wavesEl = $("waves-btns");
   [["off", 0], ["on", 1], ["max", 2]].forEach(([name, str]) => {
     const btn = makeBtn(wavesEl, name, null, () => {
       PG.waveStr = str; selectIn(wavesEl, btn);
     });
+    btn.setAttribute("aria-pressed", String(str === PG.waveStr));
     if (str === PG.waveStr) btn.classList.add("selected");
   });
 
-  const liquidEl = document.getElementById("liquid-btns");
+  const liquidEl = $("liquid-btns");
   [["classic", 0], ["fluid", 1]].forEach(([name, mode]) => {
     const btn = makeBtn(liquidEl, name, null, () => {
       PG.fluidMode = mode; selectIn(liquidEl, btn); PG.wakeLiquids && PG.wakeLiquids();
     });
+    btn.setAttribute("aria-pressed", String(mode === PG.fluidMode));
     if (mode === PG.fluidMode) btn.classList.add("selected");
   });
 
   // ---- 3D mode controls ----------------------------------------------------
-  const btn3d = document.getElementById("btn-3d");
-  const ctl3d = document.getElementById("threed-controls");
-  const sliceVal = document.getElementById("slice-val");
+  const btn3d = $("btn-3d");
+  const ctl3d = $("threed-controls");
+  const sliceVal = $("slice-val");
+  const modeChip = $("stat-mode");
 
   function setFocusZ(z) {
     PG.v3.focusZ = Math.max(0, Math.min((PG.D || 1) - 1, z));
-    sliceVal.textContent = PG.v3.focusZ;
+    sliceVal.textContent = PG.v3.focusZ + " / " + Math.max(0, (PG.D || 1) - 1);
   }
   function set3DUI(on) {
     btn3d.textContent = on ? "Exit 3D" : "Enter 3D";
     btn3d.classList.toggle("selected", on);
+    btn3d.setAttribute("aria-pressed", String(on));
     ctl3d.classList.toggle("hidden", !on);
+    modeChip.textContent = on ? "3D" : "2D";
+    modeChip.classList.toggle("on", on);
+    if (on) brushEl.classList.add("hidden");
   }
-  function instantExit3D() {
-    if (!PG.mode3d) return;
-    PG.v3.entering = PG.v3.exiting = false;
-    PG.v3.t = 0;
-    PG.exit3D(Math.max(0, Math.min(PG.D - 1, PG.v3.focusZ)));
-    set3DUI(false);
-  }
-  PG.on3DExited = () => set3DUI(false);
+  PG.on3DExited = () => { set3DUI(false); syncDepthUI(); };
 
   btn3d.addEventListener("click", () => {
     if (!PG.mode3d) {
@@ -423,31 +566,31 @@
       setFocusZ(0);
       syncDepthUI();
       set3DUI(true);
+      ctl3d.scrollIntoView({ block: "nearest" }); // the new controls just appeared
     } else if (!PG.v3.exiting) {
       PG.v3.exiting = true; PG.v3.entering = false;
     }
   });
 
-  const draw3dEl = document.getElementById("draw3d-btns");
+  const draw3dEl = $("draw3d-btns");
   [["slice", "slice"], ["top", "top"], ["floor", "floor"]].forEach(([label, mode]) => {
     const btn = makeBtn(draw3dEl, label, null, () => {
       PG.v3.drawMode = mode; selectIn(draw3dEl, btn);
     });
+    btn.setAttribute("aria-pressed", String(mode === "slice"));
     if (mode === "slice") btn.classList.add("selected");
   });
-  document.getElementById("slice-minus").addEventListener("click",
-    () => setFocusZ(PG.v3.focusZ - 1));
-  document.getElementById("slice-plus").addEventListener("click",
-    () => setFocusZ(PG.v3.focusZ + 1));
+  $("slice-minus").addEventListener("click", () => setFocusZ(PG.v3.focusZ - 1));
+  $("slice-plus").addEventListener("click", () => setFocusZ(PG.v3.focusZ + 1));
 
   // ---- size sliders ---------------------------------------------------------
-  const slW = document.getElementById("sl-w"), slWv = document.getElementById("sl-w-val");
-  const slH = document.getElementById("sl-h"), slHv = document.getElementById("sl-h-val");
-  const slD = document.getElementById("sl-d"), slDv = document.getElementById("sl-d-val");
+  const slW = $("sl-w"), slWv = $("sl-w-val");
+  const slH = $("sl-h"), slHv = $("sl-h-val");
+  const slD = $("sl-d"), slDv = $("sl-d-val");
 
-  function syncDepthUI() { // show the actual (budget-clamped) depth
-    if (PG.mode3d) { slD.value = PG.D; slDv.textContent = PG.D; }
-    else slDv.textContent = slD.value;
+  function syncDepthUI() { // show the depth you actually get, not the raw slider
+    if (PG.mode3d) { slD.value = Math.min(+slD.max, PG.D); slDv.textContent = PG.D; }
+    else slDv.textContent = PG.depthPref ? slD.value : "auto";
   }
   slW.addEventListener("input", () => { slWv.textContent = slW.value + "%"; });
   slH.addEventListener("input", () => { slHv.textContent = slH.value + "%"; });
@@ -458,76 +601,198 @@
     PG.depthPref = +slD.value;
     if (PG.mode3d) {
       PG.resizeGrid3(PG.W, PG.H, PG.depthPref);
-      syncDepthUI();
       setFocusZ(PG.v3.focusZ);
     }
+    syncDepthUI();
   });
 
-  const pauseBtn = document.getElementById("btn-pause");
+  const pauseBtn = $("btn-pause");
   function togglePause() {
     PG.paused = !PG.paused;
-    pauseBtn.innerHTML = PG.paused ? "&#9654; Resume" : "&#10074;&#10074; Pause";
+    pauseBtn.innerHTML = PG.paused
+      ? '<span class="glyph">&#9654;</span> Resume'
+      : '<span class="glyph">&#10074;&#10074;</span> Pause';
+    pauseBtn.setAttribute("aria-pressed", String(PG.paused));
+    pauseBtn.classList.toggle("selected", PG.paused);
   }
   pauseBtn.addEventListener("click", togglePause);
-  document.getElementById("btn-clear").addEventListener("click", () => {
+  $("btn-clear").addEventListener("click", () => {
     if (PG.mode3d) PG.clearGrid3(); else PG.clearGrid();
+    toast("cleared");
   });
 
-  // ---- save / load (RLE of types + fan directions, 2D only) ----------------
-  document.getElementById("btn-save").addEventListener("click", () => {
-    if (PG.mode3d) { flashStat("save: 2D only"); return; }
+  // ---- save / load ---------------------------------------------------------
+  // Payload: run-length encoded element ids plus the directions of fans/lasers
+  // (they keep their aim in `life`). v2 adds a depth so 3D boxes round-trip;
+  // a payload with no version is a legacy 2D save and still loads.
+  const SAVE_KEY = "powdergame-save";
+
+  function rleEncode(arr) {
     const rle = [];
     let run = 1;
-    for (let i = 1; i <= PG.type.length; i++) {
-      if (i < PG.type.length && PG.type[i] === PG.type[i - 1] && run < 65535) run++;
-      else { rle.push(run, PG.type[i - 1]); run = 1; }
+    for (let i = 1; i <= arr.length; i++) {
+      if (i < arr.length && arr[i] === arr[i - 1] && run < 65535) run++;
+      else { rle.push(run, arr[i - 1]); run = 1; }
     }
-    const fans = [];
-    for (let i = 0; i < PG.type.length; i++) {
-      if (PG.type[i] === E.FAN || PG.type[i] === E.LASER) fans.push(i, PG.life[i]);
-    }
-    try {
-      localStorage.setItem("powdergame-save", JSON.stringify(
-        { w: PG.W, h: PG.H, scale: PG.scale, rle, fans }));
-      flashStat("saved");
-    } catch (e) { flashStat("save failed"); }
-  });
-
-  document.getElementById("btn-load").addEventListener("click", () => {
-    if (PG.mode3d) { flashStat("load: 2D only"); return; }
-    const raw = localStorage.getItem("powdergame-save");
-    if (!raw) { flashStat("no save"); return; }
-    const s = JSON.parse(raw);
-    PG.clearGrid();
-    // paint saved grid into current grid (centered top-left aligned)
+    return rle;
+  }
+  function rleDecode(rle, limit, cb) {
     let i = 0;
-    outer:
-    for (let k = 0; k < s.rle.length; k += 2) {
-      const run = s.rle[k], t = s.rle[k + 1];
+    for (let k = 0; k + 1 < rle.length; k += 2) {
+      const run = rle[k] | 0, t = rle[k + 1] | 0;
+      if (run <= 0) continue;
+      if (t === 0) { i += run; if (i >= limit) return; continue; }
       for (let r = 0; r < run; r++, i++) {
-        if (i >= s.w * s.h) break outer;
-        const x = i % s.w, y = (i / s.w) | 0;
-        if (t !== 0 && x < PG.W && y < PG.H) PG.set(x, y, t, PG.initLife(t));
+        if (i >= limit) return;
+        cb(i, t);
       }
     }
-    for (let k = 0; k < s.fans.length; k += 2) {
-      const x = s.fans[k] % s.w, y = (s.fans[k] / s.w) | 0;
-      if (x < PG.W && y < PG.H) {
-        const j = PG.idx(x, y);
-        if (PG.type[j] === E.FAN || PG.type[j] === E.LASER) PG.life[j] = s.fans[k + 1];
-      }
+  }
+  function aimedCells(types, lifes) {
+    const out = [];
+    for (let i = 0; i < types.length; i++) {
+      const t = types[i];
+      if (t === E.FAN || t === E.LASER) out.push(i, lifes[i]);
     }
-    flashStat("loaded");
+    return out;
+  }
+
+  $("btn-save").addEventListener("click", () => {
+    const t = PG.mode3d ? PG.t3 : PG.type, l = PG.mode3d ? PG.l3 : PG.life;
+    const payload = {
+      v: 2, mode: PG.mode3d ? "3d" : "2d",
+      w: PG.W, h: PG.H, d: PG.mode3d ? PG.D : 1,
+      scale: PG.scale, rle: rleEncode(t), fans: aimedCells(t, l),
+    };
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
+      toast(PG.mode3d ? "saved 3D scene" : "saved");
+    } catch (e) {
+      toast(e && e.name === "QuotaExceededError" ? "scene too big to save" : "save failed", true);
+    }
   });
 
-  const fpsEl = document.getElementById("stat-fps");
-  const partsEl = document.getElementById("stat-parts");
-  function flashStat(msg) {
-    partsEl.textContent = msg;
+  function readSave() {
+    let raw;
+    try { raw = localStorage.getItem(SAVE_KEY); } catch (e) { return null; }
+    if (!raw) return null;
+    let s;
+    try { s = JSON.parse(raw); } catch (e) { return "corrupt"; }
+    if (!s || typeof s !== "object" || !Array.isArray(s.rle) ||
+        !(s.w > 0) || !(s.h > 0)) return "corrupt";
+    if (!Array.isArray(s.fans)) s.fans = [];
+    if (!(s.d > 0)) s.d = 1;
+    return s;
+  }
+
+  // Saves land anchored bottom-centre (and front in z), matching how the grid
+  // itself re-anchors on a resize, so a scene reloads roughly where you left it.
+  function offsets(s) {
+    return [Math.floor((PG.W - s.w) / 2), PG.H - s.h];
+  }
+  function loadPlane(s, srcZ) { // one z-plane of the save -> the 2D grid
+    const plane = s.w * s.h, base = plane * srcZ;
+    const [ox, oy] = offsets(s);
+    PG.clearGrid();
+    rleDecode(s.rle, base + plane, (i, t) => {
+      if (i < base) return;
+      const j = i - base, x = (j % s.w) + ox, y = ((j / s.w) | 0) + oy;
+      if (PG.inBounds(x, y)) PG.set(x, y, t, PG.initLife(t));
+    });
+    for (let k = 0; k + 1 < s.fans.length; k += 2) {
+      const j = s.fans[k] - base;
+      if (j < 0 || j >= plane) continue;
+      const x = (j % s.w) + ox, y = ((j / s.w) | 0) + oy;
+      if (!PG.inBounds(x, y)) continue;
+      const i = PG.idx(x, y);
+      if (PG.type[i] === E.FAN || PG.type[i] === E.LASER) PG.life[i] = s.fans[k + 1];
+    }
+  }
+  function loadBox(s, dstZ) { // whole save -> the 3D box (dstZ offsets flat saves)
+    const plane = s.w * s.h;
+    const [ox, oy] = offsets(s);
+    PG.clearGrid3();
+    rleDecode(s.rle, plane * s.d, (i, t) => {
+      const z = ((i / plane) | 0) + dstZ, j = i % plane;
+      const x = (j % s.w) + ox, y = ((j / s.w) | 0) + oy;
+      if (PG.inBounds3(x, y, z)) PG.set3(x, y, z, t, PG.initLife(t));
+    });
+    for (let k = 0; k + 1 < s.fans.length; k += 2) {
+      const i = s.fans[k], z = ((i / plane) | 0) + dstZ, j = i % plane;
+      const x = (j % s.w) + ox, y = ((j / s.w) | 0) + oy;
+      if (!PG.inBounds3(x, y, z)) continue;
+      const c = PG.idx3(x, y, z);
+      if (PG.t3[c] === E.FAN || PG.t3[c] === E.LASER) PG.l3[c] = s.fans[k + 1];
+    }
+  }
+
+  $("btn-load").addEventListener("click", () => {
+    const s = readSave();
+    if (!s) { toast("nothing saved yet", true); return; }
+    if (s === "corrupt") { toast("save file is unreadable", true); return; }
+    const is3d = s.d > 1;
+    if (PG.mode3d) {
+      loadBox(s, is3d ? 0 : PG.v3.focusZ);
+      setFocusZ(PG.v3.focusZ);
+      toast(is3d ? "loaded 3D scene" : "loaded into slice " + PG.v3.focusZ);
+    } else {
+      loadPlane(s, 0);
+      toast(is3d ? "loaded front slice of 3D save" : "loaded");
+    }
+  });
+
+  // ---- png export ----------------------------------------------------------
+  $("btn-shot").addEventListener("click", () => {
+    try {
+      canvas.toBlob(blob => {
+        if (!blob) { toast("export failed", true); return; }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "powder-game-" + Date.now() + ".png";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        toast("PNG downloaded");
+      }, "image/png");
+    } catch (e) { toast("export failed", true); }
+  });
+
+  // ---- help overlay --------------------------------------------------------
+  const helpEl = $("help-overlay");
+  function openHelp() {
+    helpEl.classList.remove("hidden");
+    $("help-close").focus();
+  }
+  function closeHelp() {
+    if (helpEl.classList.contains("hidden")) return;
+    helpEl.classList.add("hidden");
+    $("btn-help").focus();
+  }
+  function toggleHelp() {
+    if (helpEl.classList.contains("hidden")) openHelp(); else closeHelp();
+  }
+  $("btn-help").addEventListener("click", toggleHelp);
+  $("help-close").addEventListener("click", closeHelp);
+  helpEl.addEventListener("click", ev => { if (ev.target === helpEl) closeHelp(); });
+
+  // ---- collapsible panel (narrow screens) ----------------------------------
+  const panelBtn = $("btn-panel");
+  panelBtn.addEventListener("click", () => {
+    const hidden = document.body.classList.toggle("panel-hidden");
+    panelBtn.setAttribute("aria-expanded", String(!hidden));
+    panelBtn.blur();
+  });
+  if (window.matchMedia("(max-width: 760px)").matches) {
+    document.body.classList.add("panel-hidden");
+    panelBtn.setAttribute("aria-expanded", "false");
   }
 
   // ---- main loop -----------------------------------------------------------
+  const fpsEl = $("stat-fps");
+  const partsEl = $("stat-parts");
+  const dimsEl = $("stat-dims");
   let frames = 0, lastFps = performance.now();
+
   function loop() {
     if (PG.mode3d) {
       if (PG.keys.q) PG.v3.yaw -= 0.04;
@@ -555,11 +820,38 @@
     if (now - lastFps >= 500) {
       fpsEl.textContent = Math.round(frames * 1000 / (now - lastFps));
       partsEl.textContent = PG.partCount;
+      dimsEl.textContent = PG.mode3d
+        ? PG.W + "×" + PG.H + "×" + PG.D
+        : PG.W + "×" + PG.H;
       frames = 0; lastFps = now;
     }
     requestAnimationFrame(loop);
   }
 
+  // ---- opening scene -------------------------------------------------------
+  // A dune with a pond in it, so the field shows powder and liquid settling the
+  // moment the page loads instead of opening on an empty black rectangle.
+  function seedScene() {
+    const W = PG.W, H = PG.H;
+    const base = Math.max(6, Math.round(H * 0.13));
+    const basin = 0.19; // half-width of the pond, as a fraction of the field
+    for (let x = 0; x < W; x++) {
+      const t = x / W, off = Math.abs(t - 0.5);
+      let h = base + Math.round(Math.sin(t * 7.5) * base * 0.26 +
+                                Math.sin(t * 2.3 + 1) * base * 0.2);
+      if (off < basin) h -= Math.round(base * 0.75 * (1 - off / basin));
+      h = Math.max(2, h);
+      for (let y = H - h; y < H; y++) PG.set(x, y, E.POWDER, 0);
+      if (off < basin - 0.005) {
+        for (let y = H - base + 1; y < H - h; y++) PG.set(x, y, E.WATER, 0);
+      }
+    }
+  }
+
+  setBrushLabel(els[E.POWDER].name, els[E.POWDER].color);
+  set3DUI(false);
   rebuild();
+  syncDepthUI();
+  seedScene();
   loop();
 })();

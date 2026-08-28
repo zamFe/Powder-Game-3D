@@ -5,6 +5,16 @@ Powder Game reimagined in 2D and 3D using plain HTML/CSS/JS. The project was gen
 Fable performed impressively, generating the core 2D game with all materials in 20 minutes from a single, unrefined prompt. Second prompt wrote the entire 3D voxel extension in 30 minutes. 
 All prompts after that were for minor improvements, performance optimization and experimentation with graphics quality and liquid simulation.
 
+## What's in it
+
+- 39 elements &mdash; powders, liquids, gases, energy and living things &mdash; with burning, freezing,
+  dissolving, cloning, explosions, electricity and plant growth between them.
+- A coarse air and pressure field, so fans, pumps, blasts, smoke and wind tools actually move things.
+- 14 visualisation modes (thermal, pressure, aura, mesh, silhouette, and the rest).
+- A 3D voxel mode with a software renderer: sun shading, cast shadows, floor reflections and translucency.
+- A controllable player that absorbs and shoots the elements it touches.
+- Save, load and PNG export, all client-side. No build step, no dependencies, no network calls.
+
 ## How the game was built
 
 This is a browser-only game built with plain HTML, CSS, and JavaScript. There is no bundler, framework, package manager, or compile step: `index.html` loads the JavaScript files directly, in dependency order, and everything attaches to one global namespace, `PG`.
@@ -57,13 +67,40 @@ http://localhost:8741
 
 ## Controls
 
-- Left-drag draws the selected element or tool.
-- Right-drag erases.
-- Use the sidebar to choose elements, tools, pen size, speed, scale, liquid mode, wave mode, background mode, and field dimensions.
-- Press `p` or the Pause button to pause the simulation.
-- Use Save and Load for 2D localStorage saves.
-- In 3D mode, drag outside the box or middle-drag to orbit, use the mouse wheel to zoom, and use `[` / `]` to move between slices.
-- Player controls are arrow keys to move and jump, `X` or `space` to shoot, and `W` / `S` to walk through depth in 3D.
+### Drawing
+
+- **Left-drag** draws the selected element or tool, **right-drag** erases.
+- Pick an element from the sidebar, or press <kbd>/</kbd> and type to filter the 39-element palette.
+- <kbd>1</kbd>&ndash;<kbd>5</kbd> set the pen size, <kbd>P</kbd> pauses, <kbd>?</kbd> opens the full controls panel.
+- A ring on the canvas previews the pen footprint as you move.
+
+### Player
+
+Place the player with the **player** tool; right-drag with that tool selected picks it back up.
+
+- <kbd>&larr;</kbd> <kbd>&rarr;</kbd> walk, <kbd>&uarr;</kbd> jumps (or swims up).
+- <kbd>X</kbd> or <kbd>Space</kbd> shoots whatever the head has absorbed.
+- <kbd>W</kbd> / <kbd>S</kbd> walk into and out of the box in 3D.
+
+### 3D mode
+
+- Drag outside the box, or middle-drag anywhere, to orbit a full 360&deg;; <kbd>Q</kbd> and <kbd>E</kbd> spin.
+- Wheel zooms, <kbd>[</kbd> and <kbd>]</kbd> step through slices.
+- **Draw** chooses the plane you paint on: the current **slice**, raining from the **top**, or onto the **floor** pile.
+- Changing the scale or resizing the window keeps the 3D scene &mdash; the box is resized, not discarded.
+
+### Scene
+
+The pinned bar at the bottom of the sidebar is always reachable:
+
+- **Pause / Clear** &mdash; time and the field.
+- **Save / Load** &mdash; one `localStorage` slot, run-length encoded. 2D and 3D scenes both round-trip; loading a
+  3D save in 2D gives you its front slice, and loading a flat save in 3D drops it onto the active slice.
+- **PNG** &mdash; downloads the current frame, in either mode.
+
+The status line below it shows the active brush, the mode, and live fps / particle count / field dimensions.
+
+On screens narrower than 760px the sidebar collapses behind a toggle, and drawing works with touch.
 
 ## File layout
 
