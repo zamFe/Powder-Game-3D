@@ -160,6 +160,7 @@
     const fluid = PG.fluidMode, dir = PG.rand(2) ? 1 : -1;
     if (PG.tryMove(x, y, x + dir, y + 1)) return;          // settle diagonally into a pit
     if (PG.tryMove(x, y, x - dir, y + 1)) return;
+    if (PG.waveSurface(x, y)) return;                      // ripple a resting surface
     const reach = fluid ? FLUID_REACH : disperse;
     let hk = reach + 1, hcx = x;                           // nearest descent
     let canSpread = false, sd = 0, scx = x;                // first open direction
@@ -181,21 +182,40 @@
     if (canSpread && y + 1 < PG.H && PG.type[i + PG.W] === PG.type[i]) PG.tryMove(x, y, scx, y);
   };
 
-  // Waves: a traveling sinusoid that pushes surface liquid sideways, so a body
-  // of water shows crests rolling across it. 0 = off. Net transport is ~zero
-  // because the forcing is symmetric. Returns true if it moved the cell.
+  // Waves: a traveling sinusoid that herds resting surface liquid into crests,
+  // so a body of water gathers into humps that roll across it. 0 = off.
+  // With probability WAVE_HOLD[str]/256 the wave owns a surface cell's turn:
+  // on a slope it pushes the cell toward the nearest crest; at a crest or
+  // trough it holds the cell still. The rest of the time the liquid levels as
+  // usual, so the strength sets how tall crests stand against gravity. Net
+  // transport is ~zero because the forcing is symmetric about each crest.
+  // Where the surface is open the cell slides sideways; on a level pool it
+  // rides up onto the next column, but only onto the same liquid, so a crest
+  // never walks up a wall. Only wave-sized relief is herded: a cell standing
+  // more than WAVE_AMP rows above the surface half a wavelength away (a
+  // trough) or a full wavelength away (the same phase, so level in a true
+  // wave) is part of a heap, not a wave, and is left to gravity — so poured
+  // liquid levels at full speed and crest height is capped per strength.
+  // `life` is left alone: saltwater/mercury keep spark state there, and a
+  // momentum liquid's heading travels with the cell. Returns true when the
+  // wave used the turn (moved or held the cell).
   PG.waveStr = 1;
-  const WAVE_K = 0.20, WAVE_SPEED = 0.10;
-  PG.waveSurface = function (x, y, i) {
+  const WAVE_K = 0.20, WAVE_SPEED = 0.05, WAVE_HALF = 16; // HALF ≈ π / K
+  const WAVE_HOLD = [0, 130, 236], WAVE_AMP = [0, 4, 7];
+  PG.WAVE = { K: WAVE_K, SPEED: WAVE_SPEED, HALF: WAVE_HALF, HOLD: WAVE_HOLD, AMP: WAVE_AMP }; // shared with 3D
+  PG.waveSurface = function (x, y) {
     if (!PG.waveStr || !PG.isEmpty(x, y - 1)) return false; // surface cells only
-    const w = Math.sin(x * WAVE_K - PG.frame * WAVE_SPEED);
-    const thr = 1.05 - 0.45 * PG.waveStr; // higher strength -> more cells crest
-    if (w > thr && PG.chance(2)) {
-      if (PG.tryMove(x, y, x + 1, y)) { PG.life[i] = 1; return true; }
-    } else if (w < -thr && PG.chance(2)) {
-      if (PG.tryMove(x, y, x - 1, y)) { PG.life[i] = -1; return true; }
+    const a = WAVE_AMP[PG.waveStr], h = WAVE_HALF, f = 2 * WAVE_HALF;
+    if (PG.isEmpty(x - h, y + a) || PG.isEmpty(x + h, y + a) ||
+        PG.isEmpty(x - f, y + a) || PG.isEmpty(x + f, y + a)) return false; // a heap: gravity's job
+    if (PG.rand(256) >= WAVE_HOLD[PG.waveStr]) return false;
+    const c = Math.cos(x * WAVE_K - PG.frame * WAVE_SPEED);   // >0: crest lies to +x
+    if (c < 0.3 && c > -0.3) return true;                     // on a crest/trough: hold
+    const d = c > 0 ? 1 : -1;
+    if (!PG.tryMove(x, y, x + d, y) && PG.get(x + d, y) === PG.type[y * PG.W + x]) {
+      PG.tryMove(x, y, x + d, y - 1);
     }
-    return false;
+    return true;
   };
 
   // Momentum liquid (water & friends): keeps its flow direction in the cell's
@@ -209,7 +229,7 @@
       if (PG.chance(2)) PG.tryMove(x, y + 1, x, y + 2); // gravity, not syrup
       return;
     }
-    if (PG.waveSurface(x, y, i)) return;
+    if (PG.waveSurface(x, y)) return;
     let dir = PG.life[i] > 0 ? 1 : PG.life[i] < 0 ? -1 : (PG.rand(2) ? 1 : -1);
     if (PG.chance(40)) dir = -dir; // a little turbulence
     if (PG.tryMove(x, y, x + dir, y + 1)) { PG.life[i] = dir; return; }

@@ -39,16 +39,18 @@
   const BUDGET_MS = 11; // render budget; rest of 16.6ms is sim + overhead
 
   // ---- material tables (built once) ----
-  let bR = null, bG = null, bB = null, ALPHA = null, REFL = null, NOSHADOW = null;
+  let bR = null, bG = null, bB = null, ALPHA = null, REFL = null, NOSHADOW = null, LIQ = null;
   function buildTables() {
     const n = PG.elements.length;
     bR = new Uint8Array(n); bG = new Uint8Array(n); bB = new Uint8Array(n);
     ALPHA = new Uint8Array(n); REFL = new Uint8Array(n); NOSHADOW = new Uint8Array(n);
+    LIQ = new Uint8Array(n);
     for (let id = 0; id < n; id++) {
       const el = PG.elements[id];
       if (!el) continue;
       const c = parseInt(el.color.slice(1), 16);
       bR[id] = (c >> 16) & 255; bG[id] = (c >> 8) & 255; bB[id] = c & 255;
+      if (el.state === "liquid") LIQ[id] = 1;
     }
     // water/saltwater render as a plain solid (like oil) — no translucency/glint
     ALPHA[E.ACID] = 175;
@@ -70,6 +72,19 @@
   }
 
   const ease = t => t * t * (3 - 2 * t);
+
+  // Wave swell. Simulating waves cell-by-cell would keep a settled pool's whole
+  // surface awake (tens of ms a step in a full box), so 3D draws the swell
+  // instead: exposed liquid tops are lifted along the same travelling sine the
+  // 2D sim uses and shaded by its slope (translucent liquids are only shaded —
+  // their lifted splat can't be gap-filled without double-blending). Costs a
+  // table lookup per visible surface voxel; the pool underneath stays asleep.
+  const SWELL_SIN = new Float32Array(256), SWELL_COS = new Float32Array(256);
+  for (let k = 0; k < 256; k++) {
+    SWELL_SIN[k] = Math.sin(k * Math.PI / 128); SWELL_COS[k] = Math.cos(k * Math.PI / 128);
+  }
+  const SWELL_AMP = [0, 1.4, 3.0];   // crest height above rest, in cells, per strength
+  const SWELL_SHADE = [0, 22, 40];   // brightness swing across a slope
   const REFL_BAND = 36; // reflections fade out this many cells above the floor
 
   PG.render3 = function (ctx, viewW, viewH) {
@@ -217,6 +232,10 @@
 
     heightCur.fill(32000);
 
+    // swell for this frame (eases in with the 2D->3D morph)
+    const swellA = SWELL_AMP[PG.waveStr] * tt, swellF = SWELL_SHADE[PG.waveStr] * tt;
+    const swK = PG.WAVE.K * 128 / Math.PI, swPh = frame * PG.WAVE.SPEED * 128 / Math.PI;
+
     // back-to-front sweep
     const zs = dZ > 0 ? D - 1 : 0, ze = dZ > 0 ? -1 : D, zd = dZ > 0 ? -1 : 1;
     const ys = dY > 0 ? H - 1 : 0, ye = dY > 0 ? -1 : H, yd = dY > 0 ? -1 : 1;
@@ -268,7 +287,7 @@
           const dd = ez - Rp;
           const qv = inv < 1 ? 1 : (inv + 0.5) | 0;
           const l = l3[i];
-          let color;
+          let color, wdy = 0; // wdy: swell offset in buffer px (+ = down)
           if (t === E.FIRE) {
             color = fireC[l > 70 ? 1 + ((x + y + frame) & 1) : 4 - Math.min(4, (l / 14) | 0)];
           } else if (t === E.FIREWORK) {
@@ -286,6 +305,14 @@
             if (leftE) f += 40; else f -= 10;
             if (frontE) f += 24;
             if (rightE) f -= 8;
+            if (upE && swellA && LIQ[t]) {
+              // one-sided: crests rise and are filled down to the cell, troughs
+              // rest on it — a voxel never drops below its cell, so the culled
+              // voxels behind it are never uncovered as gaps
+              const ph = (((x + z) * swK - swPh) | 0) & 255;
+              if (!ALPHA[t]) wdy = -swellA * (1 + SWELL_SIN[ph]) * 0.5 * cosP * inv;
+              f += (swellF * SWELL_COS[ph]) | 0;                // rising slope faces the sun
+            }
             if (y > heightPrev[scol + x]) f = (f * 148) >> 8; // in cast shadow
             const nearK = 1 - (dd - minD) / dRange;
             f = (f * (190 + 66 * nearK)) >> 8; // distance fade
@@ -313,8 +340,13 @@
             }
           }
           const al = ALPHA[t];
-          if (al) plotBlend(sx, sy, color, al, qv);
-          else plotAt(sx, sy, color, qv);
+          if (wdy < 0) { // raised crest (opaque only): fill the column down to its cell
+            // (from the rest position, even for sub-pixel lifts — a lifted
+            // splat alone can uncover a 1px seam against its neighbour)
+            for (let fy = sy; fy > sy + wdy; fy -= qv) plotAt(sx, fy, color, qv);
+          }
+          if (al) plotBlend(sx, sy + wdy, color, al, qv);
+          else plotAt(sx, sy + wdy, color, qv);
         }
       }
       if (hasPlayer) {

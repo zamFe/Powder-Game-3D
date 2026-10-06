@@ -411,18 +411,29 @@
     if (PG.rand(4)) return;
     PG.air3.addVel(x, y, z, dx * DRAG3, dy * DRAG3, dz * DRAG3);
   };
-  const WAVE_K = 0.20, WAVE_SPEED = 0.10;
-  PG.waveSurface3 = function (x, y, z, i) {
+  // 3D twin of PG.waveSurface (same constants): herd surface cells toward the
+  // nearest crest, sliding along an open surface or riding up onto the next
+  // column of the same liquid. This only reaches liquid that is awake (flowing,
+  // or a type that never sleeps); a settled pool sleeps, and render3d draws its
+  // swell instead of simulating it.
+  PG.waveSurface3 = function (x, y, z) {
     if (!PG.waveStr || !PG.isEmpty3(x, y - 1, z)) return false;
-    // diagonal wavefront across x+z so crests roll over the 3D surface
-    const w = Math.sin((x + z) * WAVE_K - PG.frame * WAVE_SPEED);
-    const thr = 1.05 - 0.45 * PG.waveStr;
-    if (w > thr && PG.chance(2)) {
-      if (PG.tryMove3(x, y, z, x + 1, y, z)) { PG.l3[i] = 1; return true; }
-    } else if (w < -thr && PG.chance(2)) {
-      if (PG.tryMove3(x, y, z, x - 1, y, z)) { PG.l3[i] = 2; return true; }
+    const WV = PG.WAVE, a = WV.AMP[PG.waveStr], r = WV.HALF, f = 2 * WV.HALF;
+    for (let k = 0; k < 4; k++) {                             // part of a heap: gravity's job
+      const h = HDIRS[k];
+      if (PG.isEmpty3(x + h[0] * r, y + a, z + h[1] * r) ||
+          PG.isEmpty3(x + h[0] * f, y + a, z + h[1] * f)) return false;
     }
-    return false;
+    if (PG.rand(256) >= WV.HOLD[PG.waveStr]) return false;
+    // diagonal wavefront across x+z so crests roll over the 3D surface
+    const c = Math.cos((x + z) * WV.K - PG.frame * WV.SPEED);
+    if (c < 0.3 && c > -0.3) return true;                     // on a crest/trough: hold
+    const d = c > 0 ? 1 : -1;
+    if (!PG.tryMove3(x, y, z, x + d, y, z) &&
+        PG.get3(x + d, y, z) === PG.t3[(z * PG.H + y) * PG.W + x]) {
+      PG.tryMove3(x, y, z, x + d, y - 1, z);
+    }
+    return true;
   };
 
   PG.doPowder3 = function (x, y, z) {
@@ -453,6 +464,7 @@
       const h = HDIRS[(r + k) & 3];
       if (PG.tryMove3(x, y, z, x + h[0], y + 1, z + h[1])) return;
     }
+    if (PG.waveSurface3(x, y, z)) return;                    // ripple a resting surface
     const reach = fluid ? FLUID_REACH3 : disperse;
     let hk = reach + 1, hcx = x, hcz = z;                     // nearest descent
     let canSpread = false, sdx = 0, sdz = 0, scx = x, scz = z; // first open direction
@@ -501,7 +513,7 @@
       if (PG.chance(2)) PG.tryMove3(x, y + 1, z, x, y + 2, z);
       return;
     }
-    if (PG.waveSurface3(x, y, z, i)) return;
+    if (PG.waveSurface3(x, y, z)) return;
     let di = PG.l3[i] > 0 && PG.l3[i] <= 4 ? PG.l3[i] - 1 : PG.rand(4);
     if (PG.chance(40)) di = PG.rand(4);
     for (let k = 0; k < 2; k++) {

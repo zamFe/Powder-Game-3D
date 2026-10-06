@@ -41,6 +41,7 @@ The 3D engine includes several performance tricks so large scenes stay interacti
 
 - `sliceCount` and `rowCount` skip empty z-slices and rows.
 - `sleep3` and `awakeRow` stop simulating settled sand and water until neighboring cells change.
+- Waves on a settled 3D pool are drawn by the renderer instead of simulated, so the pool stays asleep.
 - Fully buried voxels are culled during rendering.
 - The 3D air solver goes idle once the air field calms down.
 - Render resolution gently drops only when heavy scenes exceed the frame budget.
@@ -50,6 +51,8 @@ The 3D engine includes several performance tricks so large scenes stay interacti
 The 2D renderer draws into an offscreen canvas at simulation resolution, fills an `ImageData` buffer directly through a `Uint32Array`, then scales that pixel buffer to the visible canvas with image smoothing disabled.
 
 The 3D renderer is also CPU-side. It does not use WebGL or Three.js; instead it manually projects voxels into screen space and writes pixels into an `ImageData` buffer. This keeps the project dependency-free and makes the simulation and renderer easy to inspect in the source.
+
+Waves are simulated in 2D: a travelling sine herds resting surface cells toward its crests while gravity spreads them back. Simulating that across a full 3D tank would keep the whole surface awake (tens of milliseconds a step), so in 3D the renderer lifts and shades exposed liquid tops along the same sine instead.
 
 ## Running locally
 
@@ -71,8 +74,9 @@ http://localhost:8741
 
 - **Left-drag** draws the selected element or tool, **right-drag** erases.
 - Pick an element from the sidebar, or press <kbd>/</kbd> and type to filter the 39-element palette.
-- <kbd>1</kbd>&ndash;<kbd>5</kbd> set the pen size, <kbd>P</kbd> pauses, <kbd>?</kbd> opens the full controls panel.
-- A ring on the canvas previews the pen footprint as you move.
+- <kbd>1</kbd>&ndash;<kbd>5</kbd> set the pen to 1, 2, 4, 8 or 16 dots across; <kbd>P</kbd> pauses; <kbd>?</kbd> opens the full controls panel.
+- A ring snapped to the dot grid outlines exactly the dots the next stroke will paint.
+- Hover any element or tool for a one-line note on what it does.
 
 ### Player
 
@@ -88,6 +92,16 @@ Place the player with the **player** tool; right-drag with that tool selected pi
 - Wheel zooms, <kbd>[</kbd> and <kbd>]</kbd> step through slices.
 - **Draw** chooses the plane you paint on: the current **slice**, raining from the **top**, or onto the **floor** pile.
 - Changing the scale or resizing the window keeps the 3D scene &mdash; the box is resized, not discarded.
+
+### Options
+
+- **Scale** sets how many screen pixels each dot takes; **Speed** runs 1, 2 or 4 simulation steps per frame.
+- **View** switches between the 14 visualisations: none, air pressure, wind lines, motion blur, shade, wind aura,
+  light, toon, air mesh, grayscale, trails, dark (glow only), thermal and silhouette.
+- **Liquid** picks how liquids level: **classic** settles close by, **fluid** rushes out and levels fast and wide.
+- **Waves** sets the swell on liquid surfaces: **off** lies still, **on** rolls gentle waves, **max** big swells.
+  Poured liquid still levels at full speed; only wave-sized relief is held up.
+- **Width / Height / Depth** resize the field (and the 3D box). Depth reads *auto* until you set it.
 
 ### Scene
 

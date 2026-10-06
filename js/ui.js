@@ -11,6 +11,21 @@
   PG.keys = {};
 
   let penSize = 4;
+  // Pen footprint: the cell offsets a pen of size N paints — a disc exactly N
+  // cells across (1 = a single dot, 2 = 2x2). Even sizes put the extra cell on
+  // the +x/+y side. Rebuilt only when the size changes.
+  let penCells = [], penLo = 0, penHi = 0;
+  function buildPen(n) {
+    penLo = -((n - 1) >> 1); penHi = n >> 1;
+    const c = (penLo + penHi) / 2, r2 = n * n / 4;
+    penCells = [];
+    for (let dy = penLo; dy <= penHi; dy++) {
+      for (let dx = penLo; dx <= penHi; dx++) {
+        if ((dx - c) * (dx - c) + (dy - c) * (dy - c) <= r2) penCells.push(dx, dy);
+      }
+    }
+  }
+  buildPen(penSize);
   let current = { kind: "element", id: E.POWDER };
   let strokeDir = 2;   // DIR8 index, default = right
   let drawing = 0;     // 1 = left (draw), 2 = right (erase)
@@ -72,19 +87,15 @@
 
   // ---- painting ----------------------------------------------------------
   function stamp(cx, cy, id, erase) {
-    const r = Math.max(1, penSize / 2);
-    const r2 = r * r;
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (dx * dx + dy * dy > r2) continue;
-        const x = Math.round(cx + dx), y = Math.round(cy + dy);
-        if (!PG.inBounds(x, y)) continue;
-        if (erase) { PG.set(x, y, 0, 0); continue; }
-        if (!PG.isEmpty(x, y)) continue;
-        let l = PG.initLife(id);
-        if (id === E.FAN || id === E.LASER) l = strokeDir;
-        PG.set(x, y, id, l);
-      }
+    const bx = Math.round(cx), by = Math.round(cy);
+    for (let k = 0; k < penCells.length; k += 2) {
+      const x = bx + penCells[k], y = by + penCells[k + 1];
+      if (!PG.inBounds(x, y)) continue;
+      if (erase) { PG.set(x, y, 0, 0); continue; }
+      if (!PG.isEmpty(x, y)) continue;
+      let l = PG.initLife(id);
+      if (id === E.FAN || id === E.LASER) l = strokeDir;
+      PG.set(x, y, id, l);
     }
   }
 
@@ -158,33 +169,31 @@
 
   function stamp3(gx, gy, gz, id, erase) {
     const mode = PG.v3.drawMode;
-    const r = Math.max(1, penSize / 2), r2 = r * r;
-    for (let da = -r; da <= r; da++) {
-      for (let db = -r; db <= r; db++) {
-        if (da * da + db * db > r2) continue;
-        if (mode === "slice") {
-          const x = Math.round(gx + da), y = Math.round(gy + db), z = Math.round(gz);
-          if (!PG.inBounds3(x, y, z)) continue;
-          if (erase) { PG.set3(x, y, z, 0, 0); continue; }
-          if (!PG.isEmpty3(x, y, z)) continue;
-          let l = PG.initLife(id);
-          if (id === E.FAN || id === E.LASER) l = strokeDir;
-          PG.set3(x, y, z, id, l);
-        } else {
-          const x = Math.round(gx + da), z = Math.round(gz + db);
-          if (x < 0 || z < 0 || x >= PG.W || z >= PG.D) continue;
-          if (erase) { // mine the column surface from above
-            for (let y = 0; y < PG.H; y++) {
-              if (PG.t3[PG.idx3(x, y, z)] !== 0) { PG.set3(x, y, z, 0, 0); break; }
-            }
-            continue;
+    const bx = Math.round(gx), by = Math.round(gy), bz = Math.round(gz);
+    for (let k = 0; k < penCells.length; k += 2) {
+      const da = penCells[k], db = penCells[k + 1];
+      if (mode === "slice") {               // footprint lies in the x-y slice
+        const x = bx + da, y = by + db, z = bz;
+        if (!PG.inBounds3(x, y, z)) continue;
+        if (erase) { PG.set3(x, y, z, 0, 0); continue; }
+        if (!PG.isEmpty3(x, y, z)) continue;
+        let l = PG.initLife(id);
+        if (id === E.FAN || id === E.LASER) l = strokeDir;
+        PG.set3(x, y, z, id, l);
+      } else {                              // footprint lies on the x-z plane
+        const x = bx + da, z = bz + db;
+        if (x < 0 || z < 0 || x >= PG.W || z >= PG.D) continue;
+        if (erase) { // mine the column surface from above
+          for (let y = 0; y < PG.H; y++) {
+            if (PG.t3[PG.idx3(x, y, z)] !== 0) { PG.set3(x, y, z, 0, 0); break; }
           }
-          const y = mode === "top" ? 1 + PG.rand(2) : surfaceY3(x, z);
-          if (!PG.isEmpty3(x, y, z)) continue;
-          let l = PG.initLife(id);
-          if (id === E.FAN || id === E.LASER) l = strokeDir;
-          PG.set3(x, y, z, id, l);
+          continue;
         }
+        const y = mode === "top" ? 1 + PG.rand(2) : surfaceY3(x, z);
+        if (!PG.isEmpty3(x, y, z)) continue;
+        let l = PG.initLife(id);
+        if (id === E.FAN || id === E.LASER) l = strokeDir;
+        PG.set3(x, y, z, id, l);
       }
     }
   }
@@ -235,6 +244,7 @@
     if (PG.mode3d && (ev.button === 1 || (ev.button === 0 && outsideBox(mx, my)))) {
       ev.preventDefault();
       orbiting = true;
+      canvas.style.cursor = "grabbing";
       lastPX = mx; lastPY = my;
       return;
     }
@@ -250,8 +260,14 @@
     lastCX = cx; lastCY = cy;
     applyTool(cx, cy, 0, 0, drawing === 2);
   });
+  // In 3D the cursor says what a drag will do: orbit (outside the box) or paint.
+  function setCursor(mx, my) {
+    const c = !PG.mode3d ? "" : orbiting ? "grabbing" : outsideBox(mx, my) ? "grab" : "";
+    if (canvas.style.cursor !== c) canvas.style.cursor = c;
+  }
   canvas.addEventListener("pointermove", ev => {
     moveBrush(ev);
+    setCursor(...screenPos(ev));
     if (orbiting) {
       const [mx, my] = screenPos(ev);
       PG.v3.yaw += (mx - lastPX) * 0.008;                                  // full 360, no clamp
@@ -308,14 +324,20 @@
 
   // ---- brush preview -------------------------------------------------------
   const brushEl = $("brush");
-  function brushDiameter() { return (2 * Math.max(1, penSize / 2) + 1) * PG.scale; }
+  // the ring encloses exactly the cells the next stamp paints: N cells across
+  // (+2 for its border), centred on the footprint and snapped to the cell grid
+  function brushDiameter() { return penSize * PG.scale + 2; }
+  let brushCX = 0, brushCY = 0;
+  function placeBrush() {
+    const mid = (penLo + penHi + 1) / 2; // footprint centre, in cells from its origin cell
+    brushEl.style.width = brushEl.style.height = brushDiameter() + "px";
+    brushEl.style.left = PG.viewOffX + (brushCX + mid) * PG.scale + "px";
+    brushEl.style.top = PG.viewOffY + (brushCY + mid) * PG.scale + "px";
+  }
   function moveBrush(ev) {
     if (PG.mode3d) { brushEl.classList.add("hidden"); return; } // no circular footprint in 3D
-    const [mx, my] = screenPos(ev);
-    const d = brushDiameter();
-    brushEl.style.width = brushEl.style.height = d + "px";
-    brushEl.style.left = mx + "px";
-    brushEl.style.top = my + "px";
+    [brushCX, brushCY] = cellPos(ev);
+    placeBrush();
     brushEl.classList.remove("hidden");
   }
   canvas.addEventListener("pointerleave", () => brushEl.classList.add("hidden"));
@@ -346,11 +368,19 @@
     const t = ev.target;
     return !!t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA");
   }
+  // Letters are stored lower-case: with Shift (or Caps Lock) a key can go down
+  // as "x" and come up as "X", which used to leave the player firing forever.
+  const keyName = ev => ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
   window.addEventListener("keydown", ev => {
     if (ev.key === "Escape") { closeHelp(); return; }
+    if (!helpEl.classList.contains("hidden")) { // modal: keys stay with the dialog
+      if (ev.key === "Tab") { ev.preventDefault(); $("help-close").focus(); }
+      else if (ev.key === "?") { ev.preventDefault(); closeHelp(); }
+      return;
+    }
     if (isTyping(ev)) return;              // don't steer the player while filtering
     if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
-    PG.keys[ev.key] = true;
+    PG.keys[keyName(ev)] = true;
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(ev.key)) {
       ev.preventDefault();
     }
@@ -363,7 +393,7 @@
       if (ev.key === "]") setFocusZ(PG.v3.focusZ + 1);
     }
   });
-  window.addEventListener("keyup", ev => { PG.keys[ev.key] = false; });
+  window.addEventListener("keyup", ev => { PG.keys[keyName(ev)] = false; });
 
   // ---- sidebar -----------------------------------------------------------
   function makeBtn(parent, label, swatchColor, onClick) {
@@ -425,22 +455,49 @@
     setBrushLabel(name, color);
   }
 
+  // What each element does — shown as the palette tooltip.
+  const ABOUT = {
+    [E.POWDER]: "falls and piles up", [E.WATER]: "flows and levels; dissolves salt",
+    [E.FIRE]: "burns what it touches; water douses it to steam", [E.SEED]: "sprouts into vine when wet",
+    [E.GPOWDER]: "gunpowder: blasts when lit", [E.FAN]: "blows air the way you drag it",
+    [E.ICE]: "slowly freezes water it touches", [E.SNOW]: "light powder; melts in water",
+    [E.GAS]: "drifts up; burns with a pressure pop", [E.CLONE]: "copies the first thing that touches it",
+    [E.SALT]: "powder; dissolves into saltwater", [E.SALTWATER]: "liquid; conducts electricity",
+    [E.OIL]: "floats on water and burns", [E.THUNDER]: "lightning: strikes, ignites, electrifies",
+    [E.SPARK]: "electricity; runs through metal, mercury, saltwater", [E.NITRO]: "liquid explosive",
+    [E.C4]: "solid explosive; huge blast when lit", [E.STONE]: "heavy powder; magma melts it",
+    [E.MAGMA]: "molten rock; cools to stone in water", [E.VIRUS]: "infects almost anything, then dies off",
+    [E.SOAPY]: "liquid; whips into bubbles in wind", [E.PUMP]: "vacuum: sucks air and swallows loose dots",
+    [E.MERCURY]: "dense liquid metal; conducts", [E.ACID]: "dissolves nearly anything; glass resists",
+    [E.VINE]: "grows upward", [E.WOOD]: "solid; burns slowly", [E.FUSE]: "solid; burns along at a steady pace",
+    [E.LASER]: "beam the way you drag; passes glass, ignites", [E.CLOUD]: "soaks up steam and rains",
+    [E.ANT]: "crawls, climbs walls, builds tunnels", [E.TORCH]: "an endless flame",
+    [E.BIRD]: "flies about and eats ants; water kills it", [E.FISH]: "swims in water; flops out of it",
+    [E.METAL]: "solid; conducts electricity", [E.BOMB]: "arms, then explodes on contact",
+    [E.BUBBLE]: "floats up and pops", [E.STEAM]: "rises and condenses back to water",
+    [E.GLASS]: "solid; shrugs off acid and blasts", [E.FIREWORK]: "rockets up and bursts",
+  };
   for (const id of PG.paletteOrder) {
     const el = els[id];
     const btn = makeBtn(paletteEl, el.name, el.color,
       () => choose(btn, { kind: "element", id }, el.name, el.color));
+    if (ABOUT[id]) btn.title = el.name + " \u2014 " + ABOUT[id];
     btn.dataset.name = el.name;
     btn.setAttribute("aria-pressed", String(id === E.POWDER));
     if (id === E.POWDER) btn.classList.add("selected");
   }
 
   const toolDefs = [
-    ["wind", "#9ad", "wind"], ["cyclone", "#7cf", "cyclone"], ["block", "#777", "block"],
-    ["erase", "#222", "erase"], ["player", "#fff", "player"],
+    ["wind", "#9ad", "wind", "drag to push the air that way"],
+    ["cyclone", "#7cf", "cyclone", "spin the air into a vortex"],
+    ["block", "#777", "block", "unbreakable wall: stops blasts and acid"],
+    ["erase", "#222", "erase", "remove dots (right-drag erases with anything)"],
+    ["player", "#fff", "player", "place the stick figure; right-click removes it"],
   ];
-  for (const [tid, color, label] of toolDefs) {
+  for (const [tid, color, label, about] of toolDefs) {
     const btn = makeBtn(toolsEl, label, color,
       () => choose(btn, { kind: "tool", id: tid }, label, color));
+    btn.title = label + " \u2014 " + about;
     btn.setAttribute("aria-pressed", "false");
   }
 
@@ -481,12 +538,13 @@
   function setPen(s) {
     if (!penBtns.has(s)) return;
     penSize = s;
+    buildPen(s);
     selectIn(penEl, penBtns.get(s));
-    const d = brushDiameter();
-    brushEl.style.width = brushEl.style.height = d + "px";
+    if (!brushEl.classList.contains("hidden")) placeBrush(); // resize the visible ring now
   }
   for (const s of PEN_SIZES) {
     const btn = makeBtn(penEl, String(s), null, () => setPen(s));
+    btn.title = (s === 1 ? "1 dot" : s + " dots") + " across (key " + (PEN_SIZES.indexOf(s) + 1) + ")";
     btn.setAttribute("aria-pressed", String(s === penSize));
     penBtns.set(s, btn);
     if (s === penSize) btn.classList.add("selected");
@@ -497,6 +555,7 @@
     const btn = makeBtn(scaleEl, s + "px", null, () => {
       PG.scale = s; selectIn(scaleEl, btn); rebuild();
     });
+    btn.title = "Each dot is " + s + " screen pixels; smaller fits more dots";
     btn.setAttribute("aria-pressed", String(s === PG.scale));
     if (s === PG.scale) btn.classList.add("selected");
   }
@@ -506,33 +565,41 @@
     const btn = makeBtn(speedEl, s + "x", null, () => {
       PG.speed = s; selectIn(speedEl, btn);
     });
+    btn.title = s === 1 ? "Normal speed" : s + " simulation steps per frame";
     btn.setAttribute("aria-pressed", String(s === PG.speed));
     if (s === PG.speed) btn.classList.add("selected");
   }
 
   const bgSel = $("bg-select");
+  const VIEW_LABELS = { non: "none", air: "air pressure", line: "wind lines", blur: "motion blur",
+    shade: "shade", aura: "wind aura", light: "light", toon: "toon", mesh: "air mesh",
+    gray: "grayscale", track: "trails", dark: "dark (glow only)", TG: "thermal", siluet: "silhouette" };
   PG.BG_NAMES.forEach((name, idx) => {
     const opt = document.createElement("option");
-    opt.value = idx; opt.textContent = name;
+    opt.value = idx; opt.textContent = VIEW_LABELS[name] || name;
     bgSel.appendChild(opt);
   });
   bgSel.value = PG.bgMode;
   bgSel.addEventListener("change", () => { PG.bgMode = +bgSel.value; });
 
   const wavesEl = $("waves-btns");
-  [["off", 0], ["on", 1], ["max", 2]].forEach(([name, str]) => {
+  [["off", 0, "Liquid surfaces lie still"], ["on", 1, "Gentle waves roll across liquids"],
+   ["max", 2, "Big rolling swells"]].forEach(([name, str, about]) => {
     const btn = makeBtn(wavesEl, name, null, () => {
       PG.waveStr = str; selectIn(wavesEl, btn);
     });
+    btn.title = about;
     btn.setAttribute("aria-pressed", String(str === PG.waveStr));
     if (str === PG.waveStr) btn.classList.add("selected");
   });
 
   const liquidEl = $("liquid-btns");
-  [["classic", 0], ["fluid", 1]].forEach(([name, mode]) => {
+  [["classic", 0, "Liquids settle close by, like the original game"],
+   ["fluid", 1, "Liquids rush out and level fast and wide"]].forEach(([name, mode, about]) => {
     const btn = makeBtn(liquidEl, name, null, () => {
       PG.fluidMode = mode; selectIn(liquidEl, btn); PG.wakeLiquids && PG.wakeLiquids();
     });
+    btn.title = about;
     btn.setAttribute("aria-pressed", String(mode === PG.fluidMode));
     if (mode === PG.fluidMode) btn.classList.add("selected");
   });
@@ -567,16 +634,23 @@
       syncDepthUI();
       set3DUI(true);
       ctl3d.scrollIntoView({ block: "nearest" }); // the new controls just appeared
-    } else if (!PG.v3.exiting) {
+    } else if (PG.v3.exiting) {            // changed your mind mid-exit: turn back
+      PG.v3.exiting = false; PG.v3.entering = true;
+      set3DUI(true);
+    } else {                                // leave 3D (also reverses a half-done entry)
       PG.v3.exiting = true; PG.v3.entering = false;
+      set3DUI(false);                       // the button now offers what a click will do
     }
   });
 
   const draw3dEl = $("draw3d-btns");
-  [["slice", "slice"], ["top", "top"], ["floor", "floor"]].forEach(([label, mode]) => {
+  [["slice", "slice", "Paint on the current slice ([ ] to move it)"],
+   ["top", "top", "Rain down from the top of the box"],
+   ["floor", "floor", "Pile up on whatever is already on the floor"]].forEach(([label, mode, about]) => {
     const btn = makeBtn(draw3dEl, label, null, () => {
       PG.v3.drawMode = mode; selectIn(draw3dEl, btn);
     });
+    btn.title = about;
     btn.setAttribute("aria-pressed", String(mode === "slice"));
     if (mode === "slice") btn.classList.add("selected");
   });
