@@ -31,7 +31,30 @@
   let drawing = 0;     // 1 = left (draw), 2 = right (erase)
   let lastCX = -1, lastCY = -1;
   let lastG3 = null;   // last 3D grid point during a stroke
-  let orbiting = false, lastPX = 0, lastPY = 0;
+  let orbiting = false, panning = false, lastPX = 0, lastPY = 0;
+
+  // ---- 3D camera ------------------------------------------------------------
+  // The view 3D mode opens with; Reset camera glides back to it.
+  const DEFAULT_CAM = { yaw: -0.45, pitch: 0.30, zoom: 1, panX: 0, panY: 0 };
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let camTween = null; // { from, to, t } while a reset is gliding
+  function resetCamera() {
+    const v3 = PG.v3, TAU = Math.PI * 2;
+    // turn back the short way: the default yaw nearest the current one
+    const to = Object.assign({}, DEFAULT_CAM,
+      { yaw: DEFAULT_CAM.yaw + TAU * Math.round((v3.yaw - DEFAULT_CAM.yaw) / TAU) });
+    if (reduceMotion) { Object.assign(v3, DEFAULT_CAM); camTween = null; return; }
+    camTween = { from: { yaw: v3.yaw, pitch: v3.pitch, zoom: v3.zoom, panX: v3.panX, panY: v3.panY }, to, t: 0 };
+  }
+  function stepCamTween() {
+    if (!camTween) return;
+    const v3 = PG.v3, { from, to } = camTween;
+    camTween.t = Math.min(1, camTween.t + 1 / 20);
+    const k = camTween.t * camTween.t * (3 - 2 * camTween.t);
+    for (const key of ["yaw", "pitch", "panX", "panY"]) v3[key] = from[key] + (to[key] - from[key]) * k;
+    v3.zoom = from.zoom * Math.pow(to.zoom / from.zoom, k); // zoom eases evenly on a log scale
+    if (camTween.t >= 1) { Object.assign(v3, DEFAULT_CAM); camTween = null; }
+  }
 
   // ---- sizing ------------------------------------------------------------
   let pctW = 100, pctH = 100; // field size sliders, % of window
@@ -240,11 +263,12 @@
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* synthetic events */ }
     dismissHint();
     const [mx, my] = screenPos(ev);
-    // orbit the camera: middle-drag anywhere, or left-drag started outside the box
+    // 3D camera: middle-drag moves the box, left-drag started outside it orbits
     if (PG.mode3d && (ev.button === 1 || (ev.button === 0 && outsideBox(mx, my)))) {
       ev.preventDefault();
-      orbiting = true;
-      canvas.style.cursor = "grabbing";
+      camTween = null; // grabbing the camera cancels a reset in progress
+      if (ev.button === 1) panning = true; else orbiting = true;
+      canvas.style.cursor = panning ? "move" : "grabbing";
       lastPX = mx; lastPY = my;
       return;
     }
@@ -262,12 +286,19 @@
   });
   // In 3D the cursor says what a drag will do: orbit (outside the box) or paint.
   function setCursor(mx, my) {
-    const c = !PG.mode3d ? "" : orbiting ? "grabbing" : outsideBox(mx, my) ? "grab" : "";
+    const c = !PG.mode3d ? "" : panning ? "move" : orbiting ? "grabbing" :
+      outsideBox(mx, my) ? "grab" : "";
     if (canvas.style.cursor !== c) canvas.style.cursor = c;
   }
   canvas.addEventListener("pointermove", ev => {
     moveBrush(ev);
     setCursor(...screenPos(ev));
+    if (panning) { // the renderer keeps the box from leaving the view
+      const [mx, my] = screenPos(ev);
+      PG.v3.panX += mx - lastPX; PG.v3.panY += my - lastPY;
+      lastPX = mx; lastPY = my;
+      return;
+    }
     if (orbiting) {
       const [mx, my] = screenPos(ev);
       PG.v3.yaw += (mx - lastPX) * 0.008;                                  // full 360, no clamp
@@ -311,7 +342,10 @@
     }
     lastCX = cx; lastCY = cy;
   });
-  const stopDraw = () => { drawing = 0; orbiting = false; lastG3 = null; };
+  const stopDraw = () => { drawing = 0; orbiting = panning = false; lastG3 = null; };
+  // a middle press would otherwise start the browser's autoscroll
+  canvas.addEventListener("mousedown", ev => { if (ev.button === 1) ev.preventDefault(); });
+  canvas.addEventListener("auxclick", ev => { if (ev.button === 1) ev.preventDefault(); });
   canvas.addEventListener("pointerup", stopDraw);
   canvas.addEventListener("pointercancel", stopDraw);
   // alt-tabbing mid-stroke used to leave the brush latched down
@@ -319,6 +353,7 @@
   canvas.addEventListener("wheel", ev => {
     if (!PG.mode3d) return;
     ev.preventDefault();
+    camTween = null;
     PG.v3.zoom = Math.max(0.3, Math.min(3.5, PG.v3.zoom * (ev.deltaY < 0 ? 1.1 : 0.9)));
   }, { passive: false });
 
@@ -389,6 +424,7 @@
     if (ev.key === "/") { ev.preventDefault(); searchEl.focus(); searchEl.select(); }
     if (ev.key >= "1" && ev.key <= "5") setPen(PEN_SIZES[+ev.key - 1]);
     if (PG.mode3d) {
+      if (ev.key === "r" || ev.key === "R") resetCamera();
       if (ev.key === "[") setFocusZ(PG.v3.focusZ - 1);
       if (ev.key === "]") setFocusZ(PG.v3.focusZ + 1);
     }
@@ -614,7 +650,10 @@
     PG.v3.focusZ = Math.max(0, Math.min((PG.D || 1) - 1, z));
     sliceVal.textContent = PG.v3.focusZ + " / " + Math.max(0, (PG.D || 1) - 1);
   }
+  const camBtn = $("btn-cam");
+  camBtn.addEventListener("click", resetCamera);
   function set3DUI(on) {
+    camBtn.classList.toggle("hidden", !on);
     btn3d.textContent = on ? "Exit 3D" : "Enter 3D";
     btn3d.classList.toggle("selected", on);
     btn3d.setAttribute("aria-pressed", String(on));
@@ -629,7 +668,7 @@
     if (!PG.mode3d) {
       PG.enter3D();
       PG.v3.t = 0; PG.v3.entering = true; PG.v3.exiting = false;
-      PG.v3.yaw = -0.45; PG.v3.pitch = 0.30; PG.v3.zoom = 1;
+      Object.assign(PG.v3, DEFAULT_CAM); camTween = null;
       setFocusZ(0);
       syncDepthUI();
       set3DUI(true);
@@ -869,6 +908,8 @@
 
   function loop() {
     if (PG.mode3d) {
+      if (PG.keys.q || PG.keys.e) camTween = null; // spinning takes over from a reset
+      stepCamTween();
       if (PG.keys.q) PG.v3.yaw -= 0.04;
       if (PG.keys.e) PG.v3.yaw += 0.04;
       PG.tick3D(); // may finish the exit transition and leave 3D mode

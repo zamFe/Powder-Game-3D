@@ -9,6 +9,7 @@
   PG.v3 = {
     t: 0, entering: false, exiting: false,
     yaw: -0.45, pitch: 0.30, zoom: 1,
+    panX: 0, panY: 0,             // screen offset of the box, display px (middle-drag)
     focusZ: 0, drawMode: "slice", // slice | top | floor
     _proj: null,
   };
@@ -73,6 +74,83 @@
 
   const ease = t => t * t * (3 - 2 * t);
 
+  // ---- keep the box in view ----
+  // Panning (and zoom, orbit or a window resize on top of it) may push the box
+  // toward an edge, but a real share of it always stays on screen: 40% of its
+  // projected footprint, or a quarter of the view once the box outgrows it
+  // (so a zoomed-in, screen-filling box is left alone). The footprint is the
+  // convex hull of the 8 projected corners, clipped to the view for its
+  // visible area.
+  function convexHull(p) { // monotone chain
+    p.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lo = [], up = [];
+    for (const q of p) {
+      while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop();
+      lo.push(q);
+    }
+    for (let i = p.length - 1; i >= 0; i--) {
+      const q = p[i];
+      while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop();
+      up.push(q);
+    }
+    lo.pop(); up.pop();
+    return lo.concat(up);
+  }
+  function polyArea(p) {
+    let a = 0;
+    for (let i = 0; i < p.length; i++) {
+      const u = p[i], v = p[(i + 1) % p.length];
+      a += u[0] * v[1] - v[0] * u[1];
+    }
+    return Math.abs(a) / 2;
+  }
+  // Sutherland-Hodgman against one view edge: axis k (0 = x, 1 = y) at v
+  function clipEdge(poly, k, v, keepAbove) {
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i], b = poly[(i + 1) % poly.length];
+      const ain = keepAbove ? a[k] >= v : a[k] <= v, bin = keepAbove ? b[k] >= v : b[k] <= v;
+      if (ain) out.push(a);
+      if (ain !== bin) {
+        const t = (v - a[k]) / (b[k] - a[k]);
+        out.push(k === 0 ? [v, a[1] + t * (b[1] - a[1])] : [a[0] + t * (b[0] - a[0]), v]);
+      }
+    }
+    return out;
+  }
+  function visibleArea(hull, dx, dy, w, h) {
+    let p = hull.map(q => [q[0] + dx, q[1] + dy]);
+    p = clipEdge(p, 0, 0, true); p = clipEdge(p, 0, w, false);
+    p = clipEdge(p, 1, 0, true); p = clipEdge(p, 1, h, false);
+    return p.length < 3 ? 0 : polyArea(p);
+  }
+  // buffer-px shift that brings enough of the box back into view (null if it is
+  // already there). Slides along one axis where it can — the shorter fix — so
+  // an edge behaves like a wall rather than drifting the box toward the centre;
+  // bisection finds the least shift, so the box stops at the edge, no snap.
+  function boxInViewShift(projP, W, H, D, rw, rh) {
+    const pts = [];
+    for (let c = 0; c < 8; c++) {
+      const p = projP((c & 1 ? W : 0) - W / 2, (c & 2 ? H : 0) - H / 2, (c & 4 ? D : 0) - D / 2);
+      pts.push([p[0], p[1]]);
+    }
+    const hull = convexHull(pts);
+    const need = Math.min(0.4 * polyArea(hull), 0.25 * rw * rh) - 0.5;
+    const ok = (dx, dy) => visibleArea(hull, dx, dy, rw, rh) >= need;
+    if (ok(0, 0)) return null;
+    const c = projP(0, 0, 0), tx = rw / 2 - c[0], ty = rh / 2 - c[1]; // toward centring the box
+    const least = (sx, sy) => { // smallest fraction of (sx, sy) that is enough
+      if ((!sx && !sy) || !ok(sx, sy)) return null;
+      let lo = 0, hi = 1;
+      for (let k = 0; k < 14; k++) { const m = (lo + hi) / 2; if (ok(sx * m, sy * m)) hi = m; else lo = m; }
+      return [sx * hi, sy * hi];
+    };
+    const fx = least(tx, 0), fy = least(0, ty);
+    if (fx && fy) return Math.abs(fx[0]) <= Math.abs(fy[1]) ? fx : fy;
+    return fx || fy || least(tx, ty) || [tx, ty];
+  }
+
   // Wave swell. Simulating waves cell-by-cell would keep a settled pool's whole
   // surface awake (tens of ms a step in a full box), so 3D draws the swell
   // instead: exposed liquid tops are lifted along the same travelling sine the
@@ -113,8 +191,9 @@
     const s = PS + (fit * v3.zoom - PS) * tt;
     const cx2d = (PG.viewOffX + W * PG.scale / 2) * RS;
     const cy2d = (PG.viewOffY + H * PG.scale / 2) * RS;
-    const ox = cx2d + (rw / 2 - cx2d) * tt;
-    const oy = cy2d + (rh / 2 - cy2d) * tt;
+    // box centre on screen: eases from the 2D field to the view centre, plus the pan
+    let ox = cx2d + (rw / 2 - cx2d) * tt + (v3.panX / dispX) * tt;
+    let oy = cy2d + (rh / 2 - cy2d) * tt + (v3.panY / dispY) * tt;
 
     const sinTP = sinT * sinP, cosTP = cosT * sinP;
     const dX = -sinT * cosP, dY = sinP, dZ = cosT * cosP; // view-forward (depth) axis
@@ -128,6 +207,10 @@
       const ez = Rp + xr * dX + yr * dY + zr * dZ;
       const inv = focal / ez;
       return [ox + (xr * cosT + zr * sinT) * inv, oy + (xr * sinTP + yr * cosP - zr * cosTP) * inv, inv];
+    }
+    if (tt >= 1) { // never let the box leave the view; the correction becomes the pan
+      const fix = boxInViewShift(projP, W, H, D, rw, rh);
+      if (fix) { ox += fix[0]; oy += fix[1]; v3.panX += fix[0] * dispX; v3.panY += fix[1] * dispY; }
     }
     // _proj (display space) for pointer unprojection + the wireframe overlay
     v3._proj = { focal: focal * dispX, ox: ox * dispX, oy: oy * dispY, Rp,

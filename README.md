@@ -88,8 +88,10 @@ Place the player with the **player** tool; right-drag with that tool selected pi
 
 ### 3D mode
 
-- Drag outside the box, or middle-drag anywhere, to orbit a full 360&deg;; <kbd>Q</kbd> and <kbd>E</kbd> spin.
+- Drag outside the box to orbit a full 360&deg;; <kbd>Q</kbd> and <kbd>E</kbd> spin.
+- Middle-drag moves the box around the screen; it can be pushed toward any edge but never all the way off.
 - Wheel zooms, <kbd>[</kbd> and <kbd>]</kbd> step through slices.
+- **Reset camera** (or <kbd>R</kbd>) glides back to the starting view. It only appears in 3D.
 - **Draw** chooses the plane you paint on: the current **slice**, raining from the **top**, or onto the **floor** pile.
 - Changing the scale or resizing the window keeps the 3D scene &mdash; the box is resized, not discarded.
 
