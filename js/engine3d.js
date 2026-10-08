@@ -456,18 +456,6 @@
     PG.sleepCell3(x, y, z); // couldn't fall -> settle
   };
 
-  // Classic liquid step for one 3D cell: Powder Game's liquid update (see
-  // PG.liquid) with the sideways rules applied on both horizontal axes, and
-  // velocity packed in l3 exactly as in 2D, plus a SUPPORTED bit (bit 30): set
-  // when the cell rests on the floor, on a non-fluid, or on supported liquid.
-  // The loop runs bottom-up, so support climbs a whole stack in one frame.
-  // Two 3D-only changes keep it fast and tidy. Cohesion: a cell spreads only
-  // while it sits on supported liquid, so a falling body stays together and a
-  // one-deep sheet on the floor holds (Powder Game lets both disperse into
-  // dots, which in 3D sprays droplets that never settle). And landing on
-  // support ends the fall (vy = 0) instead of pressing on with full speed.
-  // A cell that couldn't move and is barely moving sleeps once it is boxed in
-  // sideways or lies one cell deep: settled liquid costs nothing until disturbed.
   // Move up to n cells along a unit axis (ex, ey, ez). Every cell on the way is
   // checked, so nothing tunnels through a wall, but the empty run is crossed in
   // one hop (the cells skipped were empty before and after, so none of their
@@ -519,7 +507,25 @@
     }
     return false;
   }
+  // Classic liquid step for one 3D cell: Powder Game's liquid update (see
+  // PG.liquid) with the sideways rules applied on both horizontal axes, and the
+  // velocity packed in l3 exactly as in 2D, plus a SUPPORTED bit (bit 30): set
+  // when the cell rests on the floor, on a non-fluid or on supported liquid, and
+  // kept while it merely slumps (the loop runs bottom-up, so support climbs a
+  // whole stack in one frame). What 3D adds, to stay tidy and cheap:
+  //  - cohesion: a cell spreads only once it has landed or with liquid weighing
+  //    on it, so a falling body stays together and a one-deep sheet on the
+  //    floor holds (Powder Game lets both disperse into dots, which in 3D
+  //    sprays droplets that never settle);
+  //  - a surface cell flows only toward a drop it can reach, so a level pool
+  //    settles instead of shuffling into its own gaps forever;
+  //  - landing on support ends the fall (vy = 0) instead of pressing on;
+  //  - gravity's kick and the vertical rounding are shared (see kick3);
+  //  - a cell that couldn't move and is barely moving sleeps once it is boxed
+  //    in sideways or lies one cell deep: settled liquid costs nothing until
+  //    disturbed.
   PG.liquid3 = function (x, y, z, i, P) {
+    if (PG.fluidMode) { PG.fluidAdd(x, y, z); return; }    // fluid.js moves it
     const W = W3, H = H3, D = D3, WH = W * H, t3 = T3, l3 = L3;
     const l = l3[i], cooling = l < 0 && P.cond;
     let vx = 0, vy = 0, vz = 0;
@@ -714,6 +720,7 @@
         }
       }
     }
+    if (PG.fluidMode) PG.fluidStep(true);
     // total dot count for the HUD/budget = sum of per-slice counts
     let count = 0;
     for (let z = 0; z < D; z++) count += sc[z];

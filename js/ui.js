@@ -630,8 +630,8 @@
   });
 
   const liquidEl = $("liquid-btns");
-  [["classic", 0, "Liquids settle close by, like the original game"],
-   ["fluid", 1, "Liquids rush out and level fast and wide"]].forEach(([name, mode, about]) => {
+  [["classic", 0, "Powder Game's liquid: falls, spreads and levels, but pressure doesn't carry through it"],
+   ["fluid", 1, "A real fluid: pressure evens out U-tubes, drops splash, pools slosh (heavier on the CPU)"]].forEach(([name, mode, about]) => {
     const btn = makeBtn(liquidEl, name, null, () => {
       PG.fluidMode = mode; selectIn(liquidEl, btn); PG.wakeLiquids && PG.wakeLiquids();
     });

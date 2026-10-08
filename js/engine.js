@@ -198,6 +198,7 @@
 
   // Classic liquid step for one 2D cell (Powder Game's liquid update + blow).
   PG.liquid = function (x, y, i, P) {
+    if (PG.fluidMode) { PG.fluidAdd(x, y, 0); return; }    // fluid.js moves it
     const W = PG.W, type = PG.type, life = PG.life, rf = PG.rf;
     const l = life[i], cooling = l < 0 && P.cond;
     let vx = 0, vy = 0;
@@ -348,6 +349,7 @@
       }
     }
     PG.partCount = count;
+    if (PG.fluidMode) PG.fluidStep(false);
 
     if (PG.player) PG.player.update();
   };

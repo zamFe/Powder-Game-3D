@@ -22,7 +22,7 @@ This is a browser-only game built with plain HTML, CSS, and JavaScript. There is
 The game is organized around a cellular particle simulation:
 
 - `js/elements.js` defines every element id, display name, color, physical state, density, burn behavior, palette order, and precomputed color variants.
-- `js/engine.js` owns the 2D simulation grid. It stores element ids in `Uint8Array`, per-cell state in `Int32Array`, and frame stamps in `Uint8Array` so particles do not update twice in one frame.
+- `js/engine.js` owns the 2D simulation grid and the classic liquid model. It stores element ids in `Uint8Array`, per-cell state in `Int32Array`, and frame stamps in `Uint8Array` so particles do not update twice in one frame.
 - `js/behaviors.js` registers the per-element 2D rules, such as falling powder, flowing liquids, fire ignition, explosions, electricity, creatures, cloning, acid, magma, and plant growth.
 - `js/air.js` adds a coarse air and pressure field that particles can push and be pushed by, which is what makes fans, pumps, blasts, smoke, bubbles, and wind tools feel alive.
 - `js/backgrounds.js` defines the visual background modes, including thermal, air pressure, mesh, blur, track, light, dark, and silhouette views.
@@ -46,13 +46,32 @@ The 3D engine includes several performance tricks so large scenes stay interacti
 - The 3D air solver goes idle once the air field calms down.
 - Render resolution gently drops only when heavy scenes exceed the frame budget.
 
+## Liquids
+
+Two liquid models, switched with **Liquid** in the options.
+
+- **Classic** is Powder Game's own liquid. Every liquid cell carries a velocity that survives from frame to frame:
+  gravity arrives as a small random kick, a resting cell is pushed toward any empty side, the air carries it, and
+  each step is soft-capped below 3.8 cells. Liquid accelerates into a fall, slides off a pile and levels out, but
+  pressure never travels through a body, so a U-tube stays lopsided, just as in the original. In 3D a few
+  additions keep it tidy and cheap: a falling body stays in one piece, a cell spreads only once it has landed, a
+  surface flows only toward a drop it can reach, and settled liquid goes to sleep.
+- **Fluid** (`js/fluid.js`) treats liquid as incompressible: a FLIP solver on a grid whose cells are the
+  simulation's own. Each frame the velocities go onto the faces between cells, gravity is added, a pressure solve
+  removes the divergence (with zero pressure in air), and every cell takes back the change and moves. That is what
+  evens out a U-tube, throws a crown splash where a falling blob lands, sends a ring wave out to the walls to slosh
+  back, and squirts a jet out of a hole in a tank. It only works on liquid that is awake and costs more than
+  classic while things move; once a body is level and still it goes to sleep like any other.
+
+Both models keep heavier liquids sinking through lighter ones, so mercury, water and oil still layer up.
+
 ## Rendering
 
 The 2D renderer draws into an offscreen canvas at simulation resolution, fills an `ImageData` buffer directly through a `Uint32Array`, then scales that pixel buffer to the visible canvas with image smoothing disabled.
 
 The 3D renderer is also CPU-side. It does not use WebGL or Three.js; instead it manually projects voxels into screen space and writes pixels into an `ImageData` buffer. This keeps the project dependency-free and makes the simulation and renderer easy to inspect in the source.
 
-Waves are simulated in 2D: a travelling sine herds resting surface cells toward its crests while gravity spreads them back. Simulating that across a full 3D tank would keep the whole surface awake (tens of milliseconds a step), so in 3D the renderer lifts and shades exposed liquid tops along the same sine instead.
+Waves are simulated in 2D: a travelling sine herds resting surface cells toward its crests while gravity spreads them back (in fluid mode it pushes the surface instead, and real waves form). Simulating that across a full 3D tank would keep the whole surface awake (tens of milliseconds a step), so in 3D the renderer lifts and shades exposed liquid tops along the same sine instead.
 
 ## Running locally
 
@@ -100,7 +119,8 @@ Place the player with the **player** tool; right-drag with that tool selected pi
 - **Scale** sets how many screen pixels each dot takes; **Speed** runs 1, 2 or 4 simulation steps per frame.
 - **View** switches between the 14 visualisations: none, air pressure, wind lines, motion blur, shade, wind aura,
   light, toon, air mesh, grayscale, trails, dark (glow only), thermal and silhouette.
-- **Liquid** picks how liquids level: **classic** settles close by, **fluid** rushes out and levels fast and wide.
+- **Liquid** picks the liquid model (see [Liquids](#liquids)): **classic** is Powder Game's, **fluid** carries pressure,
+  so U-tubes even out and splashes splash.
 - **Waves** sets the swell on liquid surfaces: **off** lies still, **on** rolls gentle waves, **max** big swells.
   Poured liquid still levels at full speed; only wave-sized relief is held up.
 - **Width / Height / Depth** resize the field (and the 3D box). Depth reads *auto* until you set it.
@@ -130,6 +150,7 @@ js/air.js           2D air and pressure simulation
 js/engine.js        2D grid, movement helpers, and simulation step
 js/behaviors.js     2D element behavior rules
 js/engine3d.js      3D voxel grid, 3D air, movement, sleeping, and step
+js/fluid.js         Fluid liquid mode: pressure-projected flow for 2D and 3D
 js/behaviors3d.js   3D element behavior rules
 js/render.js        2D ImageData renderer
 js/render3d.js      3D software voxel renderer
