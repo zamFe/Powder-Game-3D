@@ -77,18 +77,18 @@
         }
       }
     }
-    PG.doLiquid3(x, y, z, 8); // settling liquid; 8 = Classic reach (Fluid scans far)
+    PG.liquid3(x, y, z, i, PG.LIQUID.water);
   };
   b[E.SALTWATER] = (x, y, z, i) => {
     if (PG.l3[i] < 0) PG.l3[i]++;
-    PG.doLiquid3(x, y, z, 4);
+    PG.liquid3(x, y, z, i, PG.LIQUID.salt);
   };
-  b[E.OIL] = (x, y, z, i) => PG.doLiquid3(x, y, z, 3);
+  b[E.OIL] = (x, y, z, i) => PG.liquid3(x, y, z, i, PG.LIQUID.oil);
   b[E.MERCURY] = (x, y, z, i) => {
     if (PG.l3[i] < 0) PG.l3[i]++;
-    PG.doLiquid3(x, y, z, 3);
+    PG.liquid3(x, y, z, i, PG.LIQUID.mercury);
   };
-  b[E.NITRO] = (x, y, z, i) => PG.flowLiquid3(x, y, z, i, 4);
+  b[E.NITRO] = (x, y, z, i) => PG.liquid3(x, y, z, i, PG.LIQUID.nitro);
   b[E.ACID] = (x, y, z, i) => {
     if (PG.chance(4)) {
       const [dx, dy, dz] = N6[PG.rand(6)];
@@ -98,7 +98,7 @@
         if (PG.chance(3)) { PG.t3[i] = 0; PG.l3[i] = 0; PG.cellGone3(x, y, z); return; }
       }
     }
-    PG.flowLiquid3(x, y, z, i, 4);
+    PG.liquid3(x, y, z, i, PG.LIQUID.acid);
   };
   b[E.SOAPY] = (x, y, z, i) => {
     const w = Math.abs(air3.velX(x, y, z)) + Math.abs(air3.velY(x, y, z)) +
@@ -106,7 +106,7 @@
     if (w > 1.6 && PG.chance(6)) {
       PG.t3[i] = E.BUBBLE; PG.l3[i] = PG.initLife(E.BUBBLE); return;
     }
-    PG.flowLiquid3(x, y, z, i, 4);
+    PG.liquid3(x, y, z, i, PG.LIQUID.soapy);
   };
   b[E.MAGMA] = (x, y, z, i) => {
     if (PG.chance(2)) {
@@ -127,7 +127,7 @@
       } else ignite3(nx, ny, nz);
     }
     if (PG.chance(24) && PG.isEmpty3(x, y - 1, z)) PG.set3(x, y - 1, z, E.FIRE, 14 + PG.rand(10));
-    PG.doLiquid3(x, y, z, 2);
+    PG.liquid3(x, y, z, i, PG.LIQUID.magma);
   };
 
   // ---- gases ----

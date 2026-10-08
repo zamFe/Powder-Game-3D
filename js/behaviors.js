@@ -97,18 +97,18 @@
         if (t === E.SALT) { PG.set(nx, ny, 0, 0); PG.type[i] = E.SALTWATER; break; }
       }
     }
-    PG.doLiquid(x, y, 8); // settling liquid; 8 = Classic reach (Fluid scans far)
+    PG.liquid(x, y, i, PG.LIQUID.water);
   };
   b[E.SALTWATER] = (x, y, i) => {
     if (PG.life[i] < 0) PG.life[i]++; // spark refractory cooldown
-    PG.doLiquid(x, y, 4);
+    PG.liquid(x, y, i, PG.LIQUID.salt);
   };
-  b[E.OIL] = (x, y, i) => PG.doLiquid(x, y, 4);
+  b[E.OIL] = (x, y, i) => PG.liquid(x, y, i, PG.LIQUID.oil);
   b[E.MERCURY] = (x, y, i) => {
     if (PG.life[i] < 0) PG.life[i]++;
-    PG.doLiquid(x, y, 3);
+    PG.liquid(x, y, i, PG.LIQUID.mercury);
   };
-  b[E.NITRO] = (x, y, i) => PG.flowLiquid(x, y, i, 5);
+  b[E.NITRO] = (x, y, i) => PG.liquid(x, y, i, PG.LIQUID.nitro);
 
   b[E.ACID] = (x, y, i) => {
     if (PG.chance(4)) {
@@ -119,7 +119,7 @@
         if (PG.chance(3)) { PG.type[i] = 0; PG.life[i] = 0; return; }
       }
     }
-    PG.flowLiquid(x, y, i, 5);
+    PG.liquid(x, y, i, PG.LIQUID.acid);
   };
 
   b[E.SOAPY] = (x, y, i) => {
@@ -127,7 +127,7 @@
     if (w > 1.6 && PG.chance(6)) {
       PG.type[i] = E.BUBBLE; PG.life[i] = PG.initLife(E.BUBBLE); return;
     }
-    PG.flowLiquid(x, y, i, 5);
+    PG.liquid(x, y, i, PG.LIQUID.soapy);
   };
 
   b[E.MAGMA] = (x, y, i) => {
@@ -148,7 +148,7 @@
       } else ignite(nx, ny);
     }
     if (PG.chance(24) && PG.isEmpty(x, y - 1)) PG.set(x, y - 1, E.FIRE, 14 + PG.rand(10));
-    PG.doLiquid(x, y, 2);
+    PG.liquid(x, y, i, PG.LIQUID.magma);
   };
 
   // ---- gases --------------------------------------------------------------

@@ -26,10 +26,18 @@
     const i = (z * PG.H + y) * PG.W + x, t = PG.t3[i];
     if (t !== 0 && PG.sleep3[i] && PG.SLEEPABLE[t]) { PG.sleep3[i] = 0; PG.awakeRow[z * PG.H + y]++; }
   };
+  // same as wake3 on the 6 face neighbours of an in-bounds cell, from its index
+  // (this runs on every 3D move, so it skips six calls and their bounds math)
   PG.wakeNeighbors3 = function (x, y, z) {
-    PG.wake3(x - 1, y, z); PG.wake3(x + 1, y, z);
-    PG.wake3(x, y - 1, z); PG.wake3(x, y + 1, z);
-    PG.wake3(x, y, z - 1); PG.wake3(x, y, z + 1);
+    const W = PG.W, H = PG.H, WH = W * H, t3 = PG.t3, s3 = PG.sleep3, S = PG.SLEEPABLE, ar = PG.awakeRow;
+    const row = z * H + y, i = row * W + x;
+    let j;
+    if (x > 0 && s3[j = i - 1] && S[t3[j]]) { s3[j] = 0; ar[row]++; }
+    if (x < W - 1 && s3[j = i + 1] && S[t3[j]]) { s3[j] = 0; ar[row]++; }
+    if (y > 0 && s3[j = i - W] && S[t3[j]]) { s3[j] = 0; ar[row - 1]++; }
+    if (y < H - 1 && s3[j = i + W] && S[t3[j]]) { s3[j] = 0; ar[row + 1]++; }
+    if (z > 0 && s3[j = i - WH] && S[t3[j]]) { s3[j] = 0; ar[row - H]++; }
+    if (z < PG.D - 1 && s3[j = i + WH] && S[t3[j]]) { s3[j] = 0; ar[row + H]++; }
   };
   // a sleepable particle that couldn't move this frame settles (skipped until woken)
   PG.sleepCell3 = function (x, y, z) {
@@ -163,6 +171,7 @@
     return {
       init, step,
       clear() { vx.fill(0); vy.fill(0); vz.fill(0); vx2.fill(0); vy2.fill(0); vz2.fill(0); p.fill(0); dirty = false; calm = 0; },
+      calm: () => !dirty, // dead calm: every velocity is ~0, readers may skip it
       velX: (x, y, z) => vx[idxFor(x, y, z)],
       velY: (x, y, z) => vy[idxFor(x, y, z)],
       velZ: (x, y, z) => vz[idxFor(x, y, z)],
@@ -447,48 +456,175 @@
     PG.sleepCell3(x, y, z); // couldn't fall -> settle
   };
 
-  // Settling liquid (see PG.doLiquid for the shared design). Falls, then flows
-  // horizontally. It prefers the nearest DESCENT (a spot it can fall into), but
-  // if none is reachable it still SPREADS into open same-level space — that
-  // lateral spread is what lets a body walk off a mound and level out flat,
-  // instead of freezing into a sand-like pile. A cell only sleeps when it is
-  // boxed in sideways (e.g. the flat, full surface of a filled container).
-  // Fluid (PG.fluidMode) scans far and rushes/slides the whole way each frame,
-  // so pours level fast and wide; Classic looks a short distance and inches.
-  const FLUID_REACH3 = 16;
-  PG.doLiquid3 = function (x, y, z, disperse) {
-    if (PG.windPush3(x, y, z, 1.4)) return;
-    if (PG.tryMove3(x, y, z, x, y + 1, z)) return;            // fall
-    const fluid = PG.fluidMode, r = PG.rand(4);
-    for (let k = 0; k < 2; k++) {                             // settle diagonally into a pit
-      const h = HDIRS[(r + k) & 3];
-      if (PG.tryMove3(x, y, z, x + h[0], y + 1, z + h[1])) return;
+  // Classic liquid step for one 3D cell: Powder Game's liquid update (see
+  // PG.liquid) with the sideways rules applied on both horizontal axes, and
+  // velocity packed in l3 exactly as in 2D, plus a SUPPORTED bit (bit 30): set
+  // when the cell rests on the floor, on a non-fluid, or on supported liquid.
+  // The loop runs bottom-up, so support climbs a whole stack in one frame.
+  // Two 3D-only changes keep it fast and tidy. Cohesion: a cell spreads only
+  // while it sits on supported liquid, so a falling body stays together and a
+  // one-deep sheet on the floor holds (Powder Game lets both disperse into
+  // dots, which in 3D sprays droplets that never settle). And landing on
+  // support ends the fall (vy = 0) instead of pressing on with full speed.
+  // A cell that couldn't move and is barely moving sleeps once it is boxed in
+  // sideways or lies one cell deep: settled liquid costs nothing until disturbed.
+  // Move up to n cells along a unit axis (ex, ey, ez). Every cell on the way is
+  // checked, so nothing tunnels through a wall, but the empty run is crossed in
+  // one hop (the cells skipped were empty before and after, so none of their
+  // neighbours need waking), then one ordinary move into whatever stopped it,
+  // so a heavier liquid still sinks through a lighter one. Returns cells moved.
+  function run3(x, y, z, ex, ey, ez, n) {
+    const W = PG.W, H = PG.H, D = PG.D, t3 = PG.t3;
+    let m = 0;
+    while (m < n) {
+      const nx = x + ex * (m + 1), ny = y + ey * (m + 1), nz = z + ez * (m + 1);
+      if (nx < 0 || ny < 0 || nz < 0 || nx >= W || ny >= H || nz >= D) break;
+      if (t3[(nz * H + ny) * W + nx] !== 0) break;
+      m++;
     }
-    if (PG.waveSurface3(x, y, z)) return;                    // ripple a resting surface
-    const reach = fluid ? FLUID_REACH3 : disperse;
-    let hk = reach + 1, hcx = x, hcz = z;                     // nearest descent
-    let canSpread = false, sdx = 0, sdz = 0, scx = x, scz = z; // first open direction
-    for (let d = 0; d < 4; d++) {
-      const h = HDIRS[(r + d) & 3], dx = h[0], dz = h[1];
-      let cx = x, cz = z;
-      for (let k = 1; k <= reach; k++) {
-        if (k >= hk) break;
-        if (!PG.isEmpty3(cx + dx, y, cz + dz)) break;
-        cx += dx; cz += dz;
-        if (!canSpread) { canSpread = true; sdx = dx; sdz = dz; scx = cx; scz = cz; }
-        else if (dx === sdx && dz === sdz) { scx = cx; scz = cz; } // extend the slide
-        if (PG.isEmpty3(cx, y + 1, cz)) { hk = k; hcx = cx; hcz = cz; break; }
+    if (m > 0) PG.tryMove3(x, y, z, x + ex * m, y + ey * m, z + ez * m);
+    if (m < n && PG.tryMove3(x + ex * m, y + ey * m, z + ez * m,
+                             x + ex * (m + 1), y + ey * (m + 1), z + ez * (m + 1))) m++;
+    return m;
+  }
+
+  // Hot path, so: its own inlined xorshift (each 32-bit draw is sliced into
+  // several random fractions), the air's calm flag read once per step, and the
+  // velocity pack written in place.
+  const FLOWS = PG.FLOWS, DENS = PG.DENS;
+  const SUPPORTED = 0x40000000; // l3 bit 30: resting on support (kept clear of the sign bit)
+  let rng3 = 0x6d2b79f5, airCalm3 = true;
+  // gravity's random kick and the vertical rounding are drawn once per frame,
+  // not per cell: cells that started falling together stay level with each
+  // other and fall as one body (per-cell draws let each cell lag at random,
+  // and a falling body shredded into a cloud of dots). The rounding gets a
+  // fixed offset per (x, z) column, so a cell never stalls the one above it,
+  // but side-by-side columns step on different frames instead of in bands.
+  let kick3 = 0.5, dither3 = 0.5;
+  // gravity is doubled in 3D: in 2D a falling stream drags the air down with it
+  // and that downdraft speeds it up, but 3D skips that drag (it would keep the
+  // costly 3D air solver awake), so without this a stream would crawl
+  const G3 = 2;
+  // grid refs for the hot path, refreshed at the top of every step (liquid3 is
+  // only ever called from inside stepSim3, so a resize can't leave them stale)
+  let W3 = 0, H3 = 0, D3 = 0, T3 = null, L3 = null;
+  // From the empty cell c, along `step`, up to n cells over the same level:
+  // is there a hole to drop into before the run hits something? (Only asked
+  // of a cell resting on liquid, so the row below always exists.)
+  const REACH = 4;
+  function dropAhead(c, step, n) {
+    for (let k = 0; k < n; k++, c += step) {
+      if (T3[c] !== 0) return false;
+      if (T3[c + W3] === 0) return true;
+    }
+    return false;
+  }
+  PG.liquid3 = function (x, y, z, i, P) {
+    const W = W3, H = H3, D = D3, WH = W * H, t3 = T3, l3 = L3;
+    const l = l3[i], cooling = l < 0 && P.cond;
+    let vx = 0, vy = 0, vz = 0;
+    if (l > 0) {
+      vx = ((l << 22) >> 22) * 0.0078125; vy = ((l << 12) >> 22) * 0.0078125;
+      vz = ((l << 2) >> 22) * 0.0078125;                     // 1/128 cell per frame
+    }
+    let ax = 0, ay = 0, az = 0;
+    if (!airCalm3) {
+      const a = PG.air3;
+      ax = a.velX(x, y, z); ay = a.velY(x, y, z); az = a.velZ(x, y, z);
+      vx += P.adv * ax; vy += P.adv * ay; vz += P.adv * az;
+    }
+    let r = rng3;                                            // three 32-bit draws
+    r ^= r << 13; r ^= r >>> 17; r ^= r << 5; const ra = r >>> 0;
+    r ^= r << 13; r ^= r >>> 17; r ^= r << 5; const rb = r >>> 0;
+    r ^= r << 13; r ^= r >>> 17; r ^= r << 5; const rc = r >>> 0;
+    rng3 = r;
+    const t = t3[i], below = y + 1 < H ? t3[i + W] : -1;     // -1: the floor
+    const rests = below !== 0;
+    // what's underneath: liquid that isn't supported is still falling — no
+    // floor yet, so this cell keeps its fall speed and doesn't spread. Support
+    // is sticky: a cell keeps it until it falls, so the slumping face of a
+    // pile still spreads while the cells under it give way.
+    const belowLiq = below > 0 && FLOWS[below] === 1;
+    const wasSup = l > 0 && (l & SUPPORTED) !== 0;
+    const held = below === -1 || (below > 0 && (FLOWS[below] === 0 ||
+      (belowLiq && (wasSup || (l3[i + W] & SUPPORTED) !== 0))));
+    // landed on support it can't sink through: no point trying to fall
+    const landed = held && !(below > 0 && FLOWS[below] !== 0 && DENS[t] > DENS[below]);
+    let open = 0, oneDeep = true;                            // empty sides; nothing liquid below
+    if (rests) {
+      if (PG.waveStr && PG.waveSurface3(x, y, z)) return;
+      if (belowLiq) oneDeep = false;
+      // spread only off liquid that has landed, or under liquid's weight
+      const under = y > 0 && FLOWS[t3[i - W]] === 1;
+      if (held && (belowLiq || under)) {
+        // pushed toward an open side; open on both sides of an axis, it keeps
+        // gliding the way it already moves (Powder Game's two pushes cancel
+        // into a random walk, so a stray drop could wander a 3D sheet for ages)
+        const x1 = P.x1, xs = P.xs * 0.00390625;           // push x1 + xs * [0, 1)
+        let xm = x > 0 && t3[i - 1] === 0, xp = x < W - 1 && t3[i + 1] === 0;
+        let zm = z > 0 && t3[i - WH] === 0, zp = z < D - 1 && t3[i + WH] === 0;
+        if (!under) {
+          // a surface cell flows only toward somewhere lower it can reach, so
+          // a level surface settles (Powder Game keeps its surface dots
+          // shuffling into each other's gaps forever, which in 3D never sleeps)
+          if (xm) xm = dropAhead(i - 1, -1, x < REACH ? x : REACH);
+          if (xp) xp = dropAhead(i + 1, 1, W - 1 - x < REACH ? W - 1 - x : REACH);
+          if (zm) zm = dropAhead(i - WH, -WH, z < REACH ? z : REACH);
+          if (zp) zp = dropAhead(i + WH, WH, D - 1 - z < REACH ? D - 1 - z : REACH);
+        }
+        const px = x1 + xs * (ra & 255), pz = x1 + xs * ((ra >>> 8) & 255);
+        if (xm && xp) vx += vx > 0 || (vx === 0 && ra & 0x10000) ? px : -px;
+        else if (xm) vx -= px; else if (xp) vx += px;
+        if (zm && zp) vz += vz > 0 || (vz === 0 && ra & 0x20000) ? pz : -pz;
+        else if (zm) vz -= pz; else if (zp) vz += pz;
+        open = (xm ? 1 : 0) + (xp ? 1 : 0) + (zm ? 1 : 0) + (zp ? 1 : 0);
       }
     }
-    if (hk <= reach) { PG.tryMove3(x, y, z, hcx, y, hcz); return; }  // descend toward the hole
-    // flat-spread only when stacked on more of the same liquid (a ≥2-deep pile
-    // that needs to level). A bottom-layer / 1-deep cell is already as low as it
-    // gets, so it settles instead of shuffling endlessly across the floor.
-    const i = (z * PG.H + y) * PG.W + x;
-    if (canSpread && y + 1 < PG.H && PG.t3[i + PG.W] === PG.t3[i]) {
-      PG.tryMove3(x, y, z, scx, y, scz); return;
+    if (held) {                                              // jitter: xr * [-1, 1)
+      const jr = P.xr * 0.001953125;
+      vx += jr * ((rb & 1023) - 512); vz += jr * (((rb >>> 10) & 1023) - 512);
     }
-    PG.sleepCell3(x, y, z);                                   // settled / boxed in -> sleep
+    vy += (P.y1 + P.ys * kick3) * G3;
+    const f = P.frc;
+    vx *= f; vy *= f; vz *= f;
+    const dx = ax + vx, dy = ay + vy, dz = az + vz;
+    const adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy, adz = dz < 0 ? -dz : dz;
+    const mx = adx > ady ? (adx > adz ? adx : adz) : (ady > adz ? ady : adz);
+    const s = 3.8 / (mx + 0.5 * (adx + ady + adz - mx) + 1);  // fast |v|, soft 3.8 cap
+    // whole cells, plus one more with the leftover fraction as its chance;
+    // horizontal first, then vertical (as Powder Game applies x, then y).
+    // (No air drag in 3D: it would keep the costly 3D air solver awake.)
+    let cx = x, cy = y, cz = z, n;
+    if ((n = (adx * s + (rc & 1023) * 0.0009765625) | 0) > 0) cx += (dx < 0 ? -1 : 1) * run3(cx, cy, cz, dx < 0 ? -1 : 1, 0, 0, n);
+    if ((n = (adz * s + ((rc >>> 10) & 1023) * 0.0009765625) | 0) > 0) cz += (dz < 0 ? -1 : 1) * run3(cx, cy, cz, 0, 0, dz < 0 ? -1 : 1, n);
+    if (dy > 0 && landed && cx === x && cz === z) vy = 0;                // landed: stop falling
+    else if ((n = (ady * s + (dither3 + (x * 0.7548776662 + z * 0.5698402910) % 1) % 1) | 0) > 0) {
+      const sy = dy < 0 ? -1 : 1, m = run3(cx, cy, cz, 0, sy, 0, n);
+      cy += sy * m;
+    }
+    const j = (cz * H + cy) * W + cx;
+    // support where it ended up: on the floor, a solid or supported liquid —
+    // or, for a cell that had it, any liquid it is merely slumping onto (a
+    // real fall, fast, clears it)
+    let sup = 0;
+    const bt = cy + 1 < H ? t3[j + W] : -1;
+    if (bt === -1 || (bt > 0 && (FLOWS[bt] === 0 || (FLOWS[bt] === 1 &&
+        ((wasSup && vy < 0.15) || (l3[j + W] & SUPPORTED) !== 0))))) {
+      sup = SUPPORTED;
+      if (vy > 0) vy = 0;                                    // on support: the fall is over
+    }
+    if (!cooling) {                                          // pack, with dithered rounding
+      const d = ((ra ^ rc) & 1023) * 0.0009765625;
+      let qx = Math.floor(vx * 128 + d), qy = Math.floor(vy * 128 + d), qz = Math.floor(vz * 128 + d);
+      qx = qx > 511 ? 511 : qx < -511 ? -511 : qx;
+      qy = qy > 511 ? 511 : qy < -511 ? -511 : qy;
+      qz = qz > 511 ? 511 : qz < -511 ? -511 : qz;
+      l3[j] = (qx & 1023) | ((qy & 1023) << 10) | ((qz & 1023) << 20) | sup;
+    }
+    // only a landed cell sleeps: one blocked by liquid still falling must
+    // keep gathering speed, or the stack it belongs to stretches out
+    if (j === i && landed && vx < 0.04 && vx > -0.04 && vz < 0.04 && vz > -0.04 &&
+        (open === 0 || oneDeep)) PG.sleepCell3(x, y, z);
   };
 
   // Wake settled cells so they re-evaluate (e.g. after switching liquid mode, a
@@ -503,45 +639,6 @@
       for (let x = 0; x < W; x++) { const i = base + x; if (t3[i] !== 0 && !s3[i]) c++; }
       ar[row] = c;
     }
-  };
-
-  // Momentum liquid in 3D: life stores flow direction (1..4 into HDIRS, 0 none).
-  PG.flowLiquid3 = function (x, y, z, i, slide) {
-    if (PG.windPush3(x, y, z, 1.4)) return;
-    if (PG.tryMove3(x, y, z, x, y + 1, z)) {
-      PG.dragAir3(x, y + 1, z, 0, 1, 0);
-      if (PG.chance(2)) PG.tryMove3(x, y + 1, z, x, y + 2, z);
-      return;
-    }
-    if (PG.waveSurface3(x, y, z)) return;
-    let di = PG.l3[i] > 0 && PG.l3[i] <= 4 ? PG.l3[i] - 1 : PG.rand(4);
-    if (PG.chance(40)) di = PG.rand(4);
-    for (let k = 0; k < 2; k++) {
-      const [dx, dz] = HDIRS[(di + k) & 3];
-      if (PG.tryMove3(x, y, z, x + dx, y + 1, z + dz)) {
-        PG.l3[i] = ((di + k) & 3) + 1; return;
-      }
-    }
-    const [dx, dz] = HDIRS[di];
-    let cx = x, cz = z;
-    for (let k = 0; k < slide; k++) {
-      if (!PG.isEmpty3(cx + dx, y, cz + dz)) { di = PG.rand(4); break; }
-      cx += dx; cz += dz;
-      if (PG.isEmpty3(cx, y + 1, cz)) break;
-    }
-    if (cx !== x || cz !== z) {
-      const j = (cz * PG.H + y) * PG.W + cx;
-      PG.t3[j] = PG.t3[i]; PG.l3[j] = di + 1;
-      PG.t3[i] = 0; PG.l3[i] = 0;
-      PG.u3[j] = PG.stamp;
-      if (cz !== z) {
-        PG.sliceCount[z]--; PG.sliceCount[cz]++;
-        PG.rowCount[z * PG.H + y]--; PG.rowCount[cz * PG.H + y]++;
-        PG.awakeRow[z * PG.H + y]--; PG.awakeRow[cz * PG.H + y]++;
-      }
-      PG.sleep3[j] = 0; PG.sleep3[i] = 0;
-      PG.wakeNeighbors3(x, y, z); // only the freed cell's neighbours
-    } else { PG.l3[i] = di + 1; PG.sleepCell3(x, y, z); } // stuck -> settle
   };
 
   PG.doGas3 = function (x, y, z) {
@@ -589,6 +686,9 @@
     const t3 = PG.t3, u3 = PG.u3, sc = PG.sliceCount, ar = PG.awakeRow, slp = PG.sleep3;
 
     PG.air3.step();
+    airCalm3 = PG.air3.calm(); // liquids skip reading a dead-calm air field
+    kick3 = PG.rf(); dither3 = (PG.frame * 0.6180339887) % 1;
+    W3 = W; H3 = H; D3 = D; T3 = t3; L3 = PG.l3;
 
     const ltr = (PG.frame & 1) === 0;
     const zf = (PG.frame & 2) === 0;

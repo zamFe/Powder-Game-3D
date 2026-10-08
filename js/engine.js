@@ -51,6 +51,14 @@
     }
   };
 
+  // per-element lookup tables for hot loops: FLOWS 1 = liquid, 2 = gas
+  PG.FLOWS = new Uint8Array(els.length); PG.DENS = new Uint16Array(els.length);
+  els.forEach((el, t) => {
+    if (!el) return;
+    PG.FLOWS[t] = el.state === "liquid" ? 1 : el.state === "gas" ? 2 : 0;
+    PG.DENS[t] = el.density;
+  });
+
   PG.idx = (x, y) => y * PG.W + x;
   PG.inBounds = (x, y) => x >= 0 && y >= 0 && x < PG.W && y < PG.H;
 
@@ -74,12 +82,10 @@
     return s === "static" || t === E.BLOCK;
   };
 
-  const rngBuf = new Uint32Array(1);
   let seed = 12345;
   PG.rand = function (n) { // fast xorshift, 0..n-1
     seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
-    rngBuf[0] = seed;
-    return rngBuf[0] % n;
+    return (seed >>> 0) % n;
   };
   PG.chance = (oneIn) => PG.rand(oneIn) === 0;
 
@@ -142,44 +148,88 @@
     PG.tryMove(x, y, x - dir, y + 1);
   };
 
-  // Liquid behaviour mode (shared by 2D + 3D): 0 = Classic (cheap cellular
-  // settling), 1 = Fluid (sees much farther and slides the whole way each frame,
-  // so pours level fast and wide).
+  // ---- liquids ---------------------------------------------------------------
+  // Liquid behaviour mode (shared by 2D + 3D): 0 = Classic, 1 = Fluid.
+  // Classic is Powder Game's own liquid. Every liquid cell carries a velocity
+  // that survives from frame to frame (damped by `frc`); gravity arrives as a
+  // small random kick; a cell resting on something is pushed toward any empty
+  // side, which is what makes a pile run off and level out; the air adds its
+  // own flow. The step is soft-capped below 3.8 cells a frame, so liquid
+  // accelerates into a fall or a slide instead of teleporting to a hole.
+  // Fluid (fluid.js) replaces the rules with a pressure-projected flow.
   PG.fluidMode = 0;
-  const FLUID_REACH = 16;
 
-  // Settling liquid. Falls, then flows horizontally. It prefers the nearest
-  // DESCENT (a spot it can fall into), but if none is reachable it still SPREADS
-  // into open same-level space — that lateral spread lets a body walk off a
-  // mound and level out flat instead of freezing into a sand-like pile. It only
-  // stops when boxed in sideways (the flat, full surface of a filled basin).
-  // Fluid scans far and slides the whole way; Classic looks close and inches.
-  PG.doLiquid = function (x, y, disperse) {
-    if (PG.windPush(x, y, 1.4)) return;
-    if (PG.tryMove(x, y, x, y + 1)) { PG.dragAir(x, y + 1, 0, 1); return; }
-    const fluid = PG.fluidMode, dir = PG.rand(2) ? 1 : -1;
-    if (PG.tryMove(x, y, x + dir, y + 1)) return;          // settle diagonally into a pit
-    if (PG.tryMove(x, y, x - dir, y + 1)) return;
-    if (PG.waveSurface(x, y)) return;                      // ripple a resting surface
-    const reach = fluid ? FLUID_REACH : disperse;
-    let hk = reach + 1, hcx = x;                           // nearest descent
-    let canSpread = false, sd = 0, scx = x;                // first open direction
-    for (const d of (dir > 0 ? [1, -1] : [-1, 1])) {
-      let cx = x;
-      for (let k = 1; k <= reach; k++) {
-        if (k >= hk) break;
-        if (!PG.isEmpty(cx + d, y)) break;
-        cx += d;
-        if (!canSpread) { canSpread = true; sd = d; scx = cx; }
-        else if (d === sd) scx = cx;                       // extend the slide
-        if (PG.isEmpty(cx, y + 1)) { hk = k; hcx = cx; break; }
-      }
+  // Per-liquid constants, from Powder Game's liquid update: air coupling, side
+  // push (x1 + up to xs), sideways jitter, gravity kick (y1 + up to ys),
+  // friction. `cond`: a conductor whose negative life is a spark cool-down.
+  const LQ = (adv, x1, x2, xr, y1, y2, frc, cond) =>
+    ({ adv, x1, xs: x2 - x1, xr, y1, ys: y2 - y1, frc, cond: !!cond });
+  PG.LIQUID = {
+    water:  LQ(0.2, 0.1, 0.2, 0.01, 0.01, 0.05, 0.9),
+    oil:    LQ(0.2, 0.1, 0.2, 0.01, 0.01, 0.05, 0.9),
+    salt:   LQ(0.2, 0.1, 0.2, 0.01, 0.01, 0.05, 0.9, true),
+    mercury: LQ(0.2, 0.1, 0.2, 0.01, 0.01, 0.05, 0.9, true),
+    nitro:  LQ(0.2, 0.1, 0.2, 0.01, 0.01, 0.05, 0.9),
+    soapy:  LQ(0.3, 0.1, 0.2, 0.01, 0.01, 0.05, 0.9),
+    acid:   LQ(0.2, 0.0, 0.1, 0.01, 0.02, 0.05, 0.9),
+    magma:  LQ(0.1, 0.0, 0.1, 0.01, 0.01, 0.10, 0.9),
+  };
+
+  // A liquid's velocity lives in its `life`, packed as three signed 10-bit
+  // fields (x | y << 10 | z << 20) in 1/128 cell per frame, so it travels with
+  // the cell through every move and swap. The packed value is never negative,
+  // which leaves negative life free for a conductor's spark cool-down.
+  const VQ = 128;
+  PG.VQ = VQ;
+  PG.packV = function (vx, vy, vz) { // dithered rounding: small speeds still decay to 0
+    const d = PG.rf();
+    let qx = Math.floor(vx * VQ + d), qy = Math.floor(vy * VQ + d), qz = Math.floor(vz * VQ + d);
+    qx = qx > 511 ? 511 : qx < -511 ? -511 : qx;
+    qy = qy > 511 ? 511 : qy < -511 ? -511 : qy;
+    qz = qz > 511 ? 511 : qz < -511 ? -511 : qz;
+    return (qx & 1023) | ((qy & 1023) << 10) | ((qz & 1023) << 20);
+  };
+  // fast uniform float in [0, 1)
+  let rs = 0x2545f491;
+  PG.rf = function () {
+    rs ^= rs << 13; rs ^= rs >>> 17; rs ^= rs << 5;
+    return (rs >>> 0) * 2.3283064365386963e-10;
+  };
+
+  // Classic liquid step for one 2D cell (Powder Game's liquid update + blow).
+  PG.liquid = function (x, y, i, P) {
+    const W = PG.W, type = PG.type, life = PG.life, rf = PG.rf;
+    const l = life[i], cooling = l < 0 && P.cond;
+    let vx = 0, vy = 0;
+    if (l > 0) { vx = ((l << 22) >> 22) / VQ; vy = ((l << 12) >> 22) / VQ; }
+    const ax = air.velX(x, y), ay = air.velY(x, y);
+    vx += P.adv * ax; vy += P.adv * ay;
+    if (y + 1 >= PG.H || type[i + W] !== 0) {               // resting on something
+      if (PG.waveSurface(x, y)) return;
+      if (x > 0 && type[i - 1] === 0) vx -= P.x1 + P.xs * rf();
+      if (x < W - 1 && type[i + 1] === 0) vx += P.x1 + P.xs * rf();
     }
-    if (hk <= reach) { PG.tryMove(x, y, hcx, y); return; }   // descend toward the hole
-    // flat-spread only when stacked on more of the same liquid (a ≥2-deep pile);
-    // a 1-deep / bottom-layer cell is already level, so it doesn't shuffle.
-    const i = y * PG.W + x;
-    if (canSpread && y + 1 < PG.H && PG.type[i + PG.W] === PG.type[i]) PG.tryMove(x, y, scx, y);
+    vx += (rf() * 2 - 1) * P.xr;
+    vy += P.y1 + P.ys * rf();
+    vx *= P.frc; vy *= P.frc;
+    // the air carries the liquid too; soft cap keeps a step under 3.8 cells
+    let dx = ax + vx, dy = ay + vy;
+    const adx = dx < 0 ? -dx : dx, ady = dy < 0 ? -dy : dy;
+    const s = 3.8 / ((adx > ady ? adx + 0.5 * ady : ady + 0.5 * adx) + 1);
+    // whole cells, plus one more with the leftover fraction as its chance;
+    // stepped cell by cell, so fast liquid can't tunnel through a thin wall
+    let cx = x, cy = y;
+    const sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+    for (let k = (adx * s + rf()) | 0; k > 0; k--) {
+      if (!PG.tryMove(cx, cy, cx + sx, cy)) break;
+      cx += sx;
+    }
+    for (let k = (ady * s + rf()) | 0; k > 0; k--) {
+      if (!PG.tryMove(cx, cy, cx, cy + sy)) break;
+      cy += sy;
+      if (sy > 0) PG.dragAir(cx, cy, 0, 1);
+    }
+    if (!cooling) life[cy * W + cx] = PG.packV(vx, vy, 0);
   };
 
   // Waves: a traveling sinusoid that herds resting surface liquid into crests,
@@ -216,36 +266,6 @@
       PG.tryMove(x, y, x + d, y - 1);
     }
     return true;
-  };
-
-  // Momentum liquid (water & friends): keeps its flow direction in the cell's
-  // life (+1/-1), falls fast, and glides along the surface until it finds a
-  // hole to drop into — so pools level out instead of stacking in columns.
-  // Only for elements that don't use life for anything else.
-  PG.flowLiquid = function (x, y, i, slide) {
-    if (PG.windPush(x, y, 1.4)) return;
-    if (PG.tryMove(x, y, x, y + 1)) {
-      PG.dragAir(x, y + 1, 0, 1);
-      if (PG.chance(2)) PG.tryMove(x, y + 1, x, y + 2); // gravity, not syrup
-      return;
-    }
-    if (PG.waveSurface(x, y)) return;
-    let dir = PG.life[i] > 0 ? 1 : PG.life[i] < 0 ? -1 : (PG.rand(2) ? 1 : -1);
-    if (PG.chance(40)) dir = -dir; // a little turbulence
-    if (PG.tryMove(x, y, x + dir, y + 1)) { PG.life[i] = dir; return; }
-    if (PG.tryMove(x, y, x - dir, y + 1)) { PG.life[i] = -dir; return; }
-    let cx = x;
-    for (let k = 0; k < slide; k++) {
-      if (!PG.isEmpty(cx + dir, y)) { dir = -dir; break; }
-      cx += dir;
-      if (PG.isEmpty(cx, y + 1)) break; // hole found: drop in next frame
-    }
-    if (cx !== x) {
-      const j = y * PG.W + cx;
-      PG.type[j] = PG.type[i]; PG.life[j] = dir;
-      PG.type[i] = 0; PG.life[i] = 0;
-      PG.updated[j] = PG.stamp;
-    } else PG.life[i] = dir;
   };
 
   PG.doGas = function (x, y) {
