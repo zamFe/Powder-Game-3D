@@ -9,26 +9,30 @@
 <body>
 <canvas id="game"></canvas>
 
+<!-- small windows: the sidebar slides over the field; this opens it and shows what the pen draws -->
+<button id="panel-btn" aria-controls="sidebar" aria-expanded="false"><span class="swatch" id="cur-swatch"></span><span id="cur-name">powder</span><span class="menu">&#9776;</span></button>
+
 <aside id="sidebar">
   <h1>POWDER<span>GAME</span></h1>
+  <button id="panel-close" aria-label="Close">&#10005;</button>
 
-  <div class="section" id="elements-section">
-    <h2>Elements</h2>
+  <details class="section" id="elements-section" open>
+    <summary><h2>Elements</h2></summary>
     <div id="palette" class="btn-grid"></div>
-  </div>
+  </details>
 
-  <div class="section">
-    <h2>Tools</h2>
+  <details class="section" open>
+    <summary><h2>Tools</h2></summary>
     <div id="tools" class="btn-grid"></div>
-  </div>
+  </details>
 
-  <div class="section">
-    <h2>Pen</h2>
+  <details class="section" open>
+    <summary><h2>Pen</h2></summary>
     <div id="pen-sizes" class="btn-row"></div>
-  </div>
+  </details>
 
-  <div class="section">
-    <h2>Options</h2>
+  <details class="section" id="options-section" open>
+    <summary><h2>Options</h2></summary>
     <div class="opt-row"><label>Scale</label><div id="scale-btns" class="btn-row"></div></div>
     <div class="opt-row"><label>Speed</label><div id="speed-btns" class="btn-row"></div></div>
     <div class="opt-row"><label>BG</label><select id="bg-select"></select></div>
@@ -37,10 +41,10 @@
     <div class="opt-row"><label>Width</label><input id="sl-w" type="range" min="25" max="100" value="100"><span class="val" id="sl-w-val">100%</span></div>
     <div class="opt-row"><label>Height</label><input id="sl-h" type="range" min="25" max="100" value="100"><span class="val" id="sl-h-val">100%</span></div>
     <div class="opt-row"><label>Depth</label><input id="sl-d" type="range" min="16" max="256" value="48"><span class="val" id="sl-d-val">48</span></div>
-  </div>
+  </details>
 
-  <div class="section">
-    <h2>3D Mode</h2>
+  <details class="section" open>
+    <summary><h2>3D Mode</h2></summary>
     <div class="btn-row actions"><button id="btn-3d">Enter 3D</button></div>
     <div id="threed-controls" class="hidden">
       <div class="opt-row"><label>Draw</label><div id="draw3d-btns" class="btn-row"></div></div>
@@ -49,7 +53,7 @@
       </div></div>
       <div class="help">Drag outside box (or middle-drag / Q E): rotate 360&deg;<br>Wheel: zoom &middot; [ ]: slice</div>
     </div>
-  </div>
+  </details>
 
   <div class="section">
     <div class="btn-row actions">

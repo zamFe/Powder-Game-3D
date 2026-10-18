@@ -33,7 +33,7 @@
 
   function rebuild() {
     instantExit3D();
-    const vw = window.innerWidth - 216, vh = window.innerHeight;
+    const vw = canvas.clientWidth, vh = canvas.clientHeight; // the window less the sidebar, when it sits beside the field
     canvas.width = vw; canvas.height = vh;
     const [tw, th] = targetDims();
     if (PG.type) PG.resizeGrid(tw, th); // keep the scene across resizes
@@ -209,6 +209,7 @@
     return mx < b[0] - m || mx > b[2] + m || my < b[1] - m || my > b[3] + m;
   }
   canvas.addEventListener("pointerdown", ev => {
+    setPanel(false); // drawing closes the sidebar where it slides over the field
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* synthetic events */ }
     const [mx, my] = screenPos(ev);
     // orbit the camera: middle-drag anywhere, or left-drag started outside the box
@@ -298,6 +299,23 @@
   window.addEventListener("keyup", ev => { PG.keys[ev.key] = false; });
 
   // ---- sidebar -----------------------------------------------------------
+  // In a small window it slides over the field: the corner button opens it and shows what the pen draws.
+  const sidebar = document.getElementById("sidebar");
+  const panelBtn = document.getElementById("panel-btn");
+  function setPanel(open) {
+    if (sidebar.classList.contains("open") === open) return;
+    sidebar.classList.toggle("open", open);
+    panelBtn.setAttribute("aria-expanded", String(open));
+  }
+  panelBtn.addEventListener("click", () => setPanel(!sidebar.classList.contains("open")));
+  document.getElementById("panel-close").addEventListener("click", () => { setPanel(false); panelBtn.focus(); });
+  window.matchMedia("(max-width: 860px)").addEventListener("change", () => setPanel(false));
+  function showCurrent(name, color) {
+    document.getElementById("cur-name").textContent = name;
+    document.getElementById("cur-swatch").style.background = color;
+    panelBtn.setAttribute("aria-label", "Sidebar, drawing " + name);
+  }
+
   function makeBtn(parent, label, swatchColor, onClick) {
     const btn = document.createElement("button");
     if (swatchColor) {
@@ -328,8 +346,9 @@
     const btn = makeBtn(paletteEl, el.name, el.color, () => {
       current = { kind: "element", id };
       clearSelections(); btn.classList.add("selected");
+      showCurrent(el.name, el.color);
     });
-    if (id === E.POWDER) btn.classList.add("selected");
+    if (id === E.POWDER) { btn.classList.add("selected"); showCurrent(el.name, el.color); }
   }
 
   const toolDefs = [
@@ -340,6 +359,7 @@
     const btn = makeBtn(toolsEl, label, color, () => {
       current = { kind: "tool", id: tid };
       clearSelections(); btn.classList.add("selected");
+      showCurrent(label, color);
     });
   }
 
@@ -559,6 +579,9 @@
     }
     requestAnimationFrame(loop);
   }
+
+  // a sidebar taller than the window starts with Options folded, so the elements, tools and 3D are at hand
+  if (sidebar.scrollHeight > sidebar.clientHeight) document.getElementById("options-section").open = false;
 
   rebuild();
   loop();

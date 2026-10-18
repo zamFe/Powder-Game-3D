@@ -161,3 +161,74 @@ input[type="range"] {
 .hidden { display: none; }
 #btn-3d.selected { color: #fff; }
 #stat-fps, #stat-parts { color: var(--text); }
+
+/* ---- folding sections ---------------------------------------------------- */
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary h2::after { content: "\25BE"; margin-left: 5px; }
+details:not([open]) > summary h2::after { content: "\25B8"; }
+details:not([open]) > summary h2 { margin-bottom: 0; }
+
+/* ---- small windows: the sidebar slides over the field ----------------------
+   A button in the corner shows what the pen draws and opens the sidebar over the field; drawing closes it.
+   On a tall narrow screen (a phone held upright) it comes up from the bottom instead. */
+#panel-btn, #panel-close { display: none; }
+
+@media (pointer: coarse) {
+  :root { --sidebar-w: 248px; }
+  button, #bg-select { font-size: 12px; min-height: 30px; }
+  #palette button, #tools button { padding: 6px; }
+  .swatch { width: 11px; height: 11px; }
+  input[type="range"] { height: 26px; }
+  .opt-row label, .opt-row .val, .section h2, #info, .help { font-size: 11px; }
+}
+
+@media (max-width: 860px) {
+  #game { width: 100vw; }
+  #sidebar {
+    width: min(var(--sidebar-w), 100vw);
+    z-index: 2;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, .55);
+    transform: translateX(100%);
+    visibility: hidden;
+    transition: transform .18s ease-out, visibility 0s linear .18s;
+  }
+  #sidebar.open { transform: none; visibility: visible; transition: transform .18s ease-out; }
+  #panel-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: fixed;
+    top: 8px; right: 8px;
+    z-index: 1;
+    padding: 6px 8px;
+    font-size: 11px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .5);
+  }
+  #panel-btn .menu { color: var(--dim); margin-left: 2px; }
+  #panel-close {
+    display: block;
+    position: absolute;
+    top: 8px; right: 8px;
+    padding: 2px 7px;
+    color: var(--dim);
+  }
+}
+
+@media (max-width: 860px) and (orientation: portrait) {
+  #sidebar {
+    top: auto; bottom: 0;
+    width: 100%;
+    height: auto;
+    max-height: 62vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .55);
+    transform: translateY(100%);
+  }
+  .btn-grid { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #sidebar, #sidebar.open { transition: none; }
+}
