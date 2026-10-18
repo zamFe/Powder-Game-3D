@@ -1,4 +1,4 @@
-// UI: sidebar, pointer/keyboard input, main loop, save/load.
+// UI: the controls, pointer/keyboard input, main loop, save/load.
 (function () {
   const E = PG.E, els = PG.elements;
   const canvas = document.getElementById("game");
@@ -209,7 +209,7 @@
     return mx < b[0] - m || mx > b[2] + m || my < b[1] - m || my > b[3] + m;
   }
   canvas.addEventListener("pointerdown", ev => {
-    setPanel(false); // drawing closes the sidebar where it slides over the field
+    setPanel(false); setOptions(false); // drawing closes what lies over the field
     try { canvas.setPointerCapture(ev.pointerId); } catch (e) { /* synthetic events */ }
     const [mx, my] = screenPos(ev);
     // orbit the camera: middle-drag anywhere, or left-drag started outside the box
@@ -298,94 +298,101 @@
   });
   window.addEventListener("keyup", ev => { PG.keys[ev.key] = false; });
 
-  // ---- sidebar -----------------------------------------------------------
-  // In a small window it slides over the field: the corner button opens it and shows what the pen draws.
+  // ---- the controls ---------------------------------------------------------
+  // The elements are a column on the right, by state; the tools, the pen and 3D are a toolbar along the bottom; the
+  // scene's actions sit over the field's top left and Options opens from its top right. In a small window the column
+  // slides over the field: the corner chip opens it and shows what the pen draws, and the tools are in it too.
   const sidebar = document.getElementById("sidebar");
   const panelBtn = document.getElementById("panel-btn");
+  const optBtn = document.getElementById("btn-options");
+  const optWrap = document.getElementById("options-wrap");
   function setPanel(open) {
     if (sidebar.classList.contains("open") === open) return;
     sidebar.classList.toggle("open", open);
     panelBtn.setAttribute("aria-expanded", String(open));
   }
-  panelBtn.addEventListener("click", () => setPanel(!sidebar.classList.contains("open")));
+  function setOptions(open) {
+    if (optWrap.classList.contains("hidden") !== open) return;
+    optWrap.classList.toggle("hidden", !open);
+    optBtn.setAttribute("aria-expanded", String(open));
+  }
+  panelBtn.addEventListener("click", () => { setOptions(false); setPanel(!sidebar.classList.contains("open")); });
   document.getElementById("panel-close").addEventListener("click", () => { setPanel(false); panelBtn.focus(); });
+  optBtn.addEventListener("click", () => { setPanel(false); setOptions(optWrap.classList.contains("hidden")); });
   window.matchMedia("(max-width: 860px)").addEventListener("change", () => setPanel(false));
   function showCurrent(name, color) {
     document.getElementById("cur-name").textContent = name;
-    document.getElementById("cur-swatch").style.background = color;
-    panelBtn.setAttribute("aria-label", "Sidebar, drawing " + name);
+    document.getElementById("cur-swatch").style.setProperty("--c", color);
+    panelBtn.setAttribute("aria-label", "Elements, drawing " + name);
   }
 
-  function makeBtn(parent, label, swatchColor, onClick) {
+  // a chip draws with an element or a tool; the one picked is marked wherever it shows
+  const chips = [];
+  function chip(parent, name, color, pick) {
     const btn = document.createElement("button");
-    if (swatchColor) {
-      const sw = document.createElement("span");
-      sw.className = "swatch";
-      sw.style.background = swatchColor;
-      btn.appendChild(sw);
-    }
-    btn.appendChild(document.createTextNode(label));
-    btn.addEventListener("click", onClick);
+    btn.className = "pg-chip";
+    btn.setAttribute("aria-pressed", "false");
+    const sw = document.createElement("i");
+    sw.style.setProperty("--c", color);
+    btn.append(sw, name);
+    btn.addEventListener("click", () => { pick(); showCurrent(name, color); markChip(name); });
     parent.appendChild(btn);
-    return btn;
+    chips.push([name, btn]);
   }
-  function selectIn(container, btn) {
-    container.querySelectorAll("button").forEach(b => b.classList.remove("selected"));
-    btn.classList.add("selected");
+  function markChip(name) {
+    for (const [n, b] of chips) {
+      b.classList.toggle("on", n === name);
+      b.setAttribute("aria-pressed", String(n === name));
+    }
   }
 
+  // a segmented control: one option pressed
+  function segment(parent, options, value, pick) {
+    for (const [label, v] of options) {
+      const btn = document.createElement("button");
+      btn.textContent = label;
+      btn.setAttribute("aria-pressed", String(v === value));
+      btn.addEventListener("click", () => {
+        parent.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b === btn)));
+        pick(v);
+      });
+      parent.appendChild(btn);
+    }
+  }
+
+  const GROUPS = [["powder", "Powders"], ["liquid", "Liquids"], ["gas", "Gases"], ["static", "Solids"],
+    ["energy", "Energy"], ["life", "Life"]];
   const paletteEl = document.getElementById("palette");
-  const toolsEl = document.getElementById("tools");
-  function clearSelections() {
-    paletteEl.querySelectorAll("button").forEach(b => b.classList.remove("selected"));
-    toolsEl.querySelectorAll("button").forEach(b => b.classList.remove("selected"));
+  const grouped = new Set(GROUPS.map(g => g[0]));
+  for (const [state, title] of [...GROUPS, [null, "Other"]]) {
+    const ids = PG.paletteOrder.filter(id => state ? els[id].state === state : !grouped.has(els[id].state));
+    if (!ids.length) continue;
+    const group = document.createElement("div");
+    group.className = "pg-group";
+    const label = document.createElement("span");
+    label.className = "ag-lab";
+    label.textContent = title;
+    const list = document.createElement("div");
+    list.className = "pg-chips";
+    group.append(label, list);
+    paletteEl.appendChild(group);
+    for (const id of ids) chip(list, els[id].name, els[id].color, () => { current = { kind: "element", id }; });
   }
 
-  for (const id of PG.paletteOrder) {
-    const el = els[id];
-    const btn = makeBtn(paletteEl, el.name, el.color, () => {
-      current = { kind: "element", id };
-      clearSelections(); btn.classList.add("selected");
-      showCurrent(el.name, el.color);
-    });
-    if (id === E.POWDER) { btn.classList.add("selected"); showCurrent(el.name, el.color); }
+  const toolDefs = [["wind", "#9ad"], ["cyclone", "#7cf"], ["block", "#777"], ["erase", "#222"], ["player", "#fff"]];
+  for (const list of [document.getElementById("tools"), document.getElementById("tools-2")]) {
+    for (const [tid, color] of toolDefs) chip(list, tid, color, () => { current = { kind: "tool", id: tid }; });
   }
+  showCurrent(els[E.POWDER].name, els[E.POWDER].color);
+  markChip(els[E.POWDER].name);
 
-  const toolDefs = [
-    ["wind", "#9ad", "wind"], ["cyclone", "#7cf", "cyclone"], ["block", "#777", "block"],
-    ["erase", "#222", "erase"], ["player", "#fff", "player"],
-  ];
-  for (const [tid, color, label] of toolDefs) {
-    const btn = makeBtn(toolsEl, label, color, () => {
-      current = { kind: "tool", id: tid };
-      clearSelections(); btn.classList.add("selected");
-      showCurrent(label, color);
-    });
-  }
-
-  const penEl = document.getElementById("pen-sizes");
-  for (const s of [1, 2, 4, 8, 16]) {
-    const btn = makeBtn(penEl, String(s), null, () => {
-      penSize = s; selectIn(penEl, btn);
-    });
-    if (s === penSize) btn.classList.add("selected");
-  }
-
-  const scaleEl = document.getElementById("scale-btns");
-  for (const s of [2, 3, 4, 6]) {
-    const btn = makeBtn(scaleEl, s + "px", null, () => {
-      PG.scale = s; selectIn(scaleEl, btn); rebuild();
-    });
-    if (s === PG.scale) btn.classList.add("selected");
-  }
-
-  const speedEl = document.getElementById("speed-btns");
-  for (const s of [1, 2, 4]) {
-    const btn = makeBtn(speedEl, s + "x", null, () => {
-      PG.speed = s; selectIn(speedEl, btn);
-    });
-    if (s === PG.speed) btn.classList.add("selected");
-  }
+  segment(document.getElementById("pen-sizes"), [1, 2, 4, 8, 16].map(s => [String(s), s]), penSize, s => { penSize = s; });
+  segment(document.getElementById("scale-btns"), [2, 3, 4, 6].map(s => [s + "px", s]), PG.scale, s => { PG.scale = s; rebuild(); });
+  segment(document.getElementById("speed-btns"), [1, 2, 4].map(s => [s + "x", s]), PG.speed, s => { PG.speed = s; });
+  segment(document.getElementById("waves-btns"), [["off", 0], ["on", 1], ["max", 2]], PG.waveStr, v => { PG.waveStr = v; });
+  segment(document.getElementById("liquid-btns"), [["classic", 0], ["fluid", 1]], PG.fluidMode, v => {
+    PG.fluidMode = v; PG.wakeLiquids && PG.wakeLiquids();
+  });
 
   const bgSel = document.getElementById("bg-select");
   PG.BG_NAMES.forEach((name, idx) => {
@@ -396,24 +403,8 @@
   bgSel.value = PG.bgMode;
   bgSel.addEventListener("change", () => { PG.bgMode = +bgSel.value; });
 
-  const wavesEl = document.getElementById("waves-btns");
-  [["off", 0], ["on", 1], ["max", 2]].forEach(([name, str]) => {
-    const btn = makeBtn(wavesEl, name, null, () => {
-      PG.waveStr = str; selectIn(wavesEl, btn);
-    });
-    if (str === PG.waveStr) btn.classList.add("selected");
-  });
-
-  const liquidEl = document.getElementById("liquid-btns");
-  [["classic", 0], ["fluid", 1]].forEach(([name, mode]) => {
-    const btn = makeBtn(liquidEl, name, null, () => {
-      PG.fluidMode = mode; selectIn(liquidEl, btn); PG.wakeLiquids && PG.wakeLiquids();
-    });
-    if (mode === PG.fluidMode) btn.classList.add("selected");
-  });
-
   // ---- 3D mode controls ----------------------------------------------------
-  const btn3d = document.getElementById("btn-3d");
+  const sw3d = document.getElementById("sw-3d");
   const ctl3d = document.getElementById("threed-controls");
   const sliceVal = document.getElementById("slice-val");
 
@@ -422,8 +413,7 @@
     sliceVal.textContent = PG.v3.focusZ;
   }
   function set3DUI(on) {
-    btn3d.textContent = on ? "Exit 3D" : "Enter 3D";
-    btn3d.classList.toggle("selected", on);
+    sw3d.checked = on;
     ctl3d.classList.toggle("hidden", !on);
   }
   function instantExit3D() {
@@ -435,26 +425,23 @@
   }
   PG.on3DExited = () => set3DUI(false);
 
-  btn3d.addEventListener("click", () => {
-    if (!PG.mode3d) {
+  sw3d.addEventListener("change", () => {
+    if (sw3d.checked && !PG.mode3d) {
       PG.enter3D();
       PG.v3.t = 0; PG.v3.entering = true; PG.v3.exiting = false;
       PG.v3.yaw = -0.45; PG.v3.pitch = 0.30; PG.v3.zoom = 1;
       setFocusZ(0);
       syncDepthUI();
       set3DUI(true);
-    } else if (!PG.v3.exiting) {
-      PG.v3.exiting = true; PG.v3.entering = false;
+    } else if (!sw3d.checked && PG.mode3d && !PG.v3.exiting) {
+      PG.v3.exiting = true; PG.v3.entering = false; // the controls go once the box has folded back
+    } else {
+      sw3d.checked = PG.mode3d && !PG.v3.exiting;  // mid-fold: the switch waits for it
     }
   });
 
-  const draw3dEl = document.getElementById("draw3d-btns");
-  [["slice", "slice"], ["top", "top"], ["floor", "floor"]].forEach(([label, mode]) => {
-    const btn = makeBtn(draw3dEl, label, null, () => {
-      PG.v3.drawMode = mode; selectIn(draw3dEl, btn);
-    });
-    if (mode === "slice") btn.classList.add("selected");
-  });
+  segment(document.getElementById("draw3d-btns"), [["slice", "slice"], ["top", "top"], ["floor", "floor"]],
+    PG.v3.drawMode, m => { PG.v3.drawMode = m; });
   document.getElementById("slice-minus").addEventListener("click",
     () => setFocusZ(PG.v3.focusZ - 1));
   document.getElementById("slice-plus").addEventListener("click",
@@ -483,18 +470,20 @@
     }
   });
 
+  // ---- the scene's actions: Pause, Clear, Save, Load (in a small window Clear, Save and Load are in Options) ----
   const pauseBtn = document.getElementById("btn-pause");
   function togglePause() {
     PG.paused = !PG.paused;
-    pauseBtn.innerHTML = PG.paused ? "&#9654; Resume" : "&#10074;&#10074; Pause";
+    pauseBtn.textContent = PG.paused ? "Resume" : "Pause";
   }
   pauseBtn.addEventListener("click", togglePause);
-  document.getElementById("btn-clear").addEventListener("click", () => {
+  const onBoth = (id, fn) => [id, id + "-2"].forEach(i => document.getElementById(i).addEventListener("click", fn));
+  onBoth("btn-clear", () => {
     if (PG.mode3d) PG.clearGrid3(); else PG.clearGrid();
   });
 
   // ---- save / load (RLE of types + fan directions, 2D only) ----------------
-  document.getElementById("btn-save").addEventListener("click", () => {
+  onBoth("btn-save", () => {
     if (PG.mode3d) { flashStat("save: 2D only"); return; }
     const rle = [];
     let run = 1;
@@ -513,7 +502,7 @@
     } catch (e) { flashStat("save failed"); }
   });
 
-  document.getElementById("btn-load").addEventListener("click", () => {
+  onBoth("btn-load", () => {
     if (PG.mode3d) { flashStat("load: 2D only"); return; }
     const raw = localStorage.getItem("powdergame-save");
     if (!raw) { flashStat("no save"); return; }
@@ -579,9 +568,6 @@
     }
     requestAnimationFrame(loop);
   }
-
-  // a sidebar taller than the window starts with Options folded, so the elements, tools and 3D are at hand
-  if (sidebar.scrollHeight > sidebar.clientHeight) document.getElementById("options-section").open = false;
 
   rebuild();
   loop();

@@ -1,0 +1,154 @@
+/* Anero Grid, the design system of Felix's portfolio, where this game runs: the tokens and parts the game's controls
+   use, copied from its version 76 (the game loads only its own files). The display faces are Unbounded, the portfolio's
+   own stand-in for Anero, and the LED readouts are Doto; both are in fonts/ with their licences (SIL OFL 1.1). */
+
+@font-face { font-family: "PG Display"; src: url("fonts/unbounded-900.woff2") format("woff2"); font-weight: 1 1000; font-display: swap; }
+@font-face { font-family: "PG Outline"; src: url("fonts/unbounded-200.woff2") format("woff2"); font-weight: 1 1000; font-display: swap; }
+@font-face { font-family: "Doto"; src: url("fonts/doto.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+
+:root {
+  --bg: #000000;
+  --surface: #0a0a0a;
+  --veil: rgba(255, 255, 255, 0.06);
+  --veil-hi: rgba(255, 255, 255, 0.12);
+  --scrim: rgba(0, 0, 0, 0.62);
+  --grid-faint: rgba(255, 255, 255, 0.07);
+  --line: #5e5e5e;
+  --ink: #ffffff;
+  --ink-muted: #a3a3a3;
+  --ink-dim: #868686;
+  --on-ink: #000000;
+  --glow-tint: #b19cd9;
+  --grid-cell: 32px;
+  --stroke-hairline: 1px;
+  --stroke-focus: 2px;
+  --glow-1: 6px;
+  --glow-2: 12px;
+  --glow-strength: 45%;
+  --duration-instant: 80ms;
+  --duration-fast: 160ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --font-display: "PG Display", "Arial Black", sans-serif;
+  --font-outline: "PG Outline", "PG Display", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", monospace;
+  --font-led: "Doto", ui-monospace, monospace;
+  --glow-halo: color-mix(in srgb, var(--glow-tint) var(--glow-strength), transparent);
+  --glow-haze: color-mix(in srgb, var(--glow-tint) calc(var(--glow-strength) / 2), transparent);
+  --glow-core: rgba(255, 255, 255, .4);
+  --glow-text-1: 0 0 1px var(--glow-core), 0 0 var(--glow-1) var(--glow-halo);
+  --glow-text-2: 0 0 1px var(--glow-core), 0 0 var(--glow-2) var(--glow-halo), 0 0 calc(var(--glow-2) * 2) var(--glow-haze);
+  --glow-box-1: 0 0 var(--glow-1) var(--glow-halo);
+}
+@media (prefers-contrast: more) { :root { --glow-text-1: none; --glow-text-2: none; --glow-box-1: none; } }
+
+/* ---------- Button: glyph brackets ---------- */
+.ag-btn {
+  --ag-h: 40px; --ag-g: 33px; --ag-pad: 14px; --ag-bc: var(--ink);
+  display: inline-flex; align-items: center; height: var(--ag-h);
+  margin: 0; padding: 0; border: 0; border-radius: 0;
+  background: var(--veil); color: var(--ink);
+  font-family: var(--font-mono); font-size: 13px; line-height: 16px; font-weight: 400;
+  letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; text-decoration: none;
+  cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.ag-btn::before, .ag-btn::after {
+  font-family: var(--font-display); font-size: var(--ag-g); line-height: var(--ag-h);
+  letter-spacing: 0; color: var(--ag-bc); transition: transform var(--duration-fast) var(--ease-out);
+}
+.ag-btn::before { content: "["; margin-right: var(--ag-pad); }
+.ag-btn::after { content: "]"; margin-left: calc(var(--ag-pad) - .16em); }
+.ag-btn--curly::before { content: "{"; }
+.ag-btn--curly::after { content: "}"; }
+.ag-btn:hover { background: var(--veil-hi); }
+.ag-btn:hover::before { transform: translateX(-4px); }
+.ag-btn:hover::after { transform: translateX(4px); }
+.ag-btn:focus-visible, .ag-seg button:focus-visible { outline: var(--stroke-focus) solid var(--ink); outline-offset: 2px; }
+.ag-btn--secondary::before, .ag-btn--secondary::after { font-family: var(--font-outline); }
+.ag-btn:disabled, .ag-btn[aria-disabled="true"] { --ag-bc: var(--ink-dim); color: var(--ink-dim); background: var(--veil); cursor: default; }
+.ag-btn:disabled::before, .ag-btn:disabled::after { transform: none; }
+.ag-btn--sm { --ag-h: 28px; --ag-g: 23px; --ag-pad: 8px; font-size: 11px; letter-spacing: .12em; }
+.ag-btn:hover, .ag-btn:focus-visible { text-shadow: var(--glow-text-2); }
+.ag-btn:disabled { text-shadow: none; }
+
+/* ---------- Segmented control ---------- */
+.ag-seg { display: inline-flex; align-items: center; height: 40px; background: var(--veil); }
+.ag-seg::before, .ag-seg::after { font-family: var(--font-display); font-size: 33px; line-height: 40px; color: var(--ink); }
+.ag-seg::before { content: "["; }
+.ag-seg::after { content: "]"; }
+.ag-seg button {
+  height: 40px; margin: 0; padding: 0 16px; border: 0; background: transparent; cursor: pointer;
+  color: var(--ink-muted); font-family: var(--font-mono); font-size: 13px; line-height: 16px; letter-spacing: .16em; text-transform: uppercase;
+}
+.ag-seg button + button { border-left: var(--stroke-hairline) solid var(--line); }
+.ag-seg button:hover { color: var(--ink); }
+.ag-seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); box-shadow: var(--glow-box-1); }
+.ag-seg--sm { height: 28px; }
+.ag-seg--sm::before, .ag-seg--sm::after { font-size: 23px; line-height: 28px; }
+.ag-seg--sm button { height: 28px; padding: 0 10px; font-size: 11px; letter-spacing: .12em; }
+
+/* ---------- Input and select ---------- */
+.ag-input { display: flex; align-items: center; height: 40px; background: var(--veil); }
+.ag-input::before, .ag-input::after { font-family: var(--font-display); font-size: 33px; line-height: 40px; color: var(--ink-dim); }
+.ag-input::before { content: "["; }
+.ag-input::after { content: "]"; }
+.ag-input select {
+  flex: 1; min-width: 0; height: 40px; padding: 0 12px; margin: 0; border: 0; outline: 0; background: transparent;
+  color: var(--ink); font-family: var(--font-mono); font-size: 15px; line-height: 24px;
+}
+.ag-input:focus-within { background: var(--veil-hi); }
+.ag-input:focus-within::before, .ag-input:focus-within::after { color: var(--ink); }
+.ag-select { position: relative; }
+.ag-select select { -webkit-appearance: none; appearance: none; padding-right: 36px; cursor: pointer; background: none; }
+.ag-select .ag-select-chev { position: absolute; right: 26px; top: 14px; width: 12px; height: 12px; background: var(--ink-muted); pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='black' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M3.5 7.5H7.5L12.5 12.5L17.5 7.5H21.5L22.5 8.5L14.5 16.5H10.5L2.5 8.5Z'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cg fill='none' stroke='black' stroke-width='1.5' stroke-linecap='square' stroke-linejoin='miter'%3E%3Cpath d='M3.5 7.5H7.5L12.5 12.5L17.5 7.5H21.5L22.5 8.5L14.5 16.5H10.5L2.5 8.5Z'/%3E%3C/g%3E%3C/svg%3E") center / contain no-repeat; }
+.ag-select select option { background: var(--surface); color: var(--ink); }
+
+/* ---------- Switch: a slant-band track; the block slides; OFF / ON in label capitals ---------- */
+.ag-switch { position: relative; display: inline-flex; align-items: center; gap: 10px; min-height: 24px; font-family: var(--font-mono); font-size: 15px; line-height: 24px; color: var(--ink); cursor: pointer; }
+.ag-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.ag-switch-track { position: relative; flex: none; width: 44px; height: 20px; background: var(--ink-muted); clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%); }
+.ag-switch-track::before { content: ""; position: absolute; inset: 1px; background: var(--bg); clip-path: polygon(7.6px 0, 100% 0, calc(100% - 7.6px) 100%, 0 100%); }
+.ag-switch-track::after { content: ""; position: absolute; left: 6px; top: 4px; width: 14px; height: 12px; background: var(--ink-muted);
+  clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%); transition: left var(--duration-fast) var(--ease-out), background-color var(--duration-fast); }
+.ag-switch input:checked + .ag-switch-track::before { background: var(--veil-hi); }
+.ag-switch input:checked + .ag-switch-track::after { left: 24px; background: var(--ink); }
+.ag-switch-state { font-size: 11px; letter-spacing: .14em; color: var(--ink-dim); min-width: 3ch; }
+.ag-switch-state::before { content: "OFF"; }
+.ag-switch input:checked ~ .ag-switch-state { color: var(--ink); }
+.ag-switch input:checked ~ .ag-switch-state::before { content: "ON"; }
+.ag-switch input:focus-visible + span { outline: var(--stroke-focus) solid var(--ink); outline-offset: 3px; }
+
+/* ---------- Slider: a ruler with a needle ---------- */
+.ag-range { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; margin: 0; background: transparent; cursor: pointer; }
+.ag-range::-webkit-slider-runnable-track { height: 10px; background: repeating-linear-gradient(90deg, var(--ink-dim) 0 1px, transparent 1px 8px) 0 0 / 100% 6px no-repeat, linear-gradient(var(--line), var(--line)) 0 100% / 100% 1px no-repeat; }
+.ag-range::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 22px; margin-top: -8px; background: linear-gradient(var(--ink), var(--ink)) 4px 0 / 1px 14px no-repeat, linear-gradient(var(--ink), var(--ink)) 0 13px / 9px 9px no-repeat; }
+.ag-range::-moz-range-track { height: 10px; background: repeating-linear-gradient(90deg, var(--ink-dim) 0 1px, transparent 1px 8px) 0 0 / 100% 6px no-repeat, linear-gradient(var(--line), var(--line)) 0 100% / 100% 1px no-repeat; }
+.ag-range::-moz-range-thumb { width: 9px; height: 22px; border: 0; border-radius: 0; background: linear-gradient(var(--ink), var(--ink)) 4px 0 / 1px 14px no-repeat, linear-gradient(var(--ink), var(--ink)) 0 13px / 9px 9px no-repeat; }
+.ag-range:focus-visible { outline: var(--stroke-focus) solid var(--ink); outline-offset: 4px; }
+
+/* ---------- Panel: top-right corner cut ---------- */
+.ag-panel {
+  --c: var(--grid-cell); --e: var(--ink); --t: var(--stroke-hairline);
+  --g: linear-gradient(var(--e), var(--e));
+  position: relative; padding: var(--grid-cell); color: var(--ink);
+}
+.ag-panel--chamfer {
+  clip-path: polygon(0 0, calc(100% - var(--c)) 0, 100% var(--c), 100% 100%, 0 100%);
+  background:
+    var(--g) 0 0 / calc(100% - var(--c)) var(--t) no-repeat,
+    var(--g) 100% 100% / var(--t) calc(100% - var(--c)) no-repeat,
+    var(--g) 0 100% / 100% var(--t) no-repeat,
+    var(--g) 0 0 / var(--t) 100% no-repeat,
+    linear-gradient(to top right, transparent calc(50% - 1px), var(--e) calc(50% - 1px), var(--e) calc(50% + 1px), transparent calc(50% + 1px)) 100% 0 / var(--c) var(--c) no-repeat,
+    var(--veil);
+}
+
+/* ---------- LED readout and label ---------- */
+.ag-led {
+  font-family: var(--font-led); font-weight: 800; color: var(--ink); white-space: nowrap; overflow: hidden;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, var(--grid-faint) 1px, transparent 1.4px);
+  background-size: 4px 4px;
+  text-shadow: var(--glow-text-1);
+}
+.ag-lab { font-size: 11px; line-height: 14px; letter-spacing: .16em; color: var(--ink-muted); text-transform: uppercase; }
