@@ -1,30 +1,33 @@
+/* Powder Game's layout, in the Anero theme (anero.css holds its tokens and parts). The field fills the window less the
+   elements column on the right and the toolbar along the bottom; the scene's actions sit over its top left corner and
+   Options over its top right. In a window 860px wide or less the field takes the whole width and the column slides over
+   it (up from the bottom on a phone held upright); the tools join the column, and Clear, Save and Load go into Options. */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-:root {
-  --sidebar-w: 216px;
-  --bg: #15171c;
-  --panel: #1e2128;
-  --panel2: #262a33;
-  --border: #343945;
-  --text: #cfd6e4;
-  --dim: #7d8597;
-  --accent: #ffb340;
-}
+:root { --side-w: 300px; --bar-h: 52px; }
 
 html, body {
   width: 100%; height: 100%;
   overflow: hidden;
   background: var(--bg);
-  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
 }
+button { font: inherit; }
+.hidden { display: none !important; }
+@media (min-width: 861px) { .pg-small { display: none !important; } }
+@media (max-width: 860px) { .pg-roomy { display: none !important; } }
 
 #game {
   position: fixed;
   left: 0; top: 0;
-  width: calc(100vw - var(--sidebar-w));
-  height: 100vh;
+  width: calc(100vw - var(--side-w));
+  height: calc(100vh - var(--bar-h));
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   background: #000;
@@ -32,201 +35,133 @@ html, body {
   touch-action: none;
 }
 
+/* ---- over the field: the actions (top left), Options (top right) ------------------------------------------------ */
+.pg-float { position: fixed; z-index: 2; }
+#actions {
+  top: 12px; left: 12px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+}
+.pg-read { display: inline-flex; align-items: center; gap: 14px; height: 28px; padding: 0 10px; font-size: 15px; line-height: 28px; text-transform: uppercase; }
+.pg-read b { font-weight: inherit; font-size: 11px; color: var(--ink-muted); margin-left: 5px; letter-spacing: .1em; }
+#corner { top: 12px; right: calc(var(--side-w) + 12px); display: flex; align-items: center; gap: 8px; }
+
+#options-wrap {
+  top: 52px; right: calc(var(--side-w) + 12px);
+  z-index: 3;
+  width: 380px; max-width: calc(100vw - 24px);
+  max-height: calc(100vh - var(--bar-h) - 64px);
+  overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
+  background: var(--bg);          /* the panel's own fill is a veil: this keeps the field from showing through */
+  clip-path: polygon(0 0, calc(100% - var(--grid-cell)) 0, 100% var(--grid-cell), 100% 100%, 0 100%);
+}
+#options { display: grid; gap: 12px; padding: 20px; }
+.pg-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.pg-row > .ag-seg, .pg-row > .pg-btns { grid-column: 2 / -1; justify-self: start; }
+.pg-row > .ag-input { grid-column: 2 / -1; }
+.pg-btns { display: flex; gap: 8px; }
+.pg-val { min-width: 4ch; text-align: right; font-family: var(--font-led); font-weight: 800; font-size: 13px; }
+.pg-help { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pg-help p { font-size: 11px; line-height: 18px; color: var(--ink-muted); user-select: text; -webkit-user-select: text; }
+
+/* ---- the elements column ----------------------------------------------------------------------------------------- */
 #sidebar {
   position: fixed;
-  right: 0; top: 0;
-  width: var(--sidebar-w);
-  height: 100vh;
-  background: var(--panel);
-  border-left: 1px solid var(--border);
-  color: var(--text);
-  padding: 10px 10px 20px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  top: 0; right: 0;
+  z-index: 1;
+  width: var(--side-w);
+  height: calc(100vh - var(--bar-h));
+  padding: 16px;
+  display: grid; align-content: start; gap: 10px;
+  overflow-x: hidden; overflow-y: auto;
+  background: var(--bg);
+  border-left: 1px solid var(--line);
+  scrollbar-width: thin; scrollbar-color: var(--line) transparent;
 }
+.pg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+/* the wordmark: POWDER in the display face, GAME in the outline face */
+.pg-mark { font-family: var(--font-display); font-size: 18px; line-height: 22px; letter-spacing: .02em; white-space: nowrap; }
+.pg-mark span { font-family: var(--font-outline); color: var(--ink-muted); margin-left: 6px; }
+#palette { display: grid; gap: 10px; }
+.pg-group > .ag-lab { display: block; margin-bottom: 6px; }
 
-#sidebar h1 {
-  font-size: 17px;
-  letter-spacing: 2px;
-  color: var(--accent);
-  text-align: center;
-  margin-bottom: 8px;
-  font-weight: 800;
-}
-#sidebar h1 span { color: var(--dim); font-weight: 300; }
-
-.section { margin-bottom: 10px; }
-
-.section h2 {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--dim);
-  margin-bottom: 5px;
-}
-
-.btn-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
-}
-
-.btn-row { display: flex; gap: 3px; flex-wrap: wrap; }
-.btn-row.actions { margin-bottom: 4px; }
-.btn-row.actions button { flex: 1; }
-
-.opt-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 4px;
-}
-.opt-row label {
-  font-size: 10px;
-  color: var(--dim);
-  width: 34px;
-  text-transform: uppercase;
-}
-.opt-row .btn-row { flex: 1; }
-.opt-row .btn-row button { flex: 1; padding: 3px 0; }
-
-button {
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--text);
-  font-size: 10px;
-  padding: 4px 5px;
+/* a chip: an element or a tool, what the pen draws. The segmented control's button on its own, inverted when picked;
+   its swatch is the material's colour, the only colour in the controls. */
+.pg-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.pg-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 26px; padding: 0 10px 0 8px;
+  border: 0; background: var(--veil); color: var(--ink-muted);
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
   cursor: pointer;
-  font-family: inherit;
+}
+.pg-chip i { width: 9px; height: 9px; flex: none; background: var(--c, var(--ink)); clip-path: polygon(0 0, calc(100% - 3px) 0, 100% 3px, 100% 100%, 0 100%); }
+.pg-chip:hover { color: var(--ink); background: var(--veil-hi); }
+.pg-chip:focus-visible { outline: var(--stroke-focus) solid var(--ink); outline-offset: 2px; }
+.pg-chip.on { background: var(--ink); color: var(--on-ink); box-shadow: var(--glow-box-1); }
+
+/* ---- the toolbar along the bottom -------------------------------------------------------------------------------- */
+#toolbar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 1;
+  height: var(--bar-h);
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;
 }
-button:hover { border-color: var(--dim); }
+#toolbar::-webkit-scrollbar { display: none; }
+#toolbar .pg-chips { flex-wrap: nowrap; }
+.pg-sep { width: 1px; align-self: stretch; margin: 10px 4px; background: var(--line); flex: none; }
+.pg-gap { flex: 1; }
+#toolbar .ag-switch { font-size: 13px; letter-spacing: .12em; }
+.pg-3d { display: flex; align-items: center; gap: 12px; }
+.pg-step { display: inline-flex; align-items: center; }
+.pg-step output { min-width: 4ch; text-align: center; font-family: var(--font-led); font-weight: 800; font-size: 15px; text-shadow: var(--glow-text-1); }
 
-button.selected {
-  border-color: var(--accent);
-  color: #fff;
-  box-shadow: 0 0 0 1px var(--accent) inset;
-}
-
-#palette button, #tools button {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 4px;
-}
-
-.swatch {
-  width: 9px; height: 9px;
-  border-radius: 2px;
-  flex: none;
-  border: 1px solid rgba(255,255,255,.18);
-}
-
-#bg-select {
-  flex: 1;
-  min-width: 0;
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--text);
-  font-size: 10px;
-  font-family: inherit;
-  padding: 3px 4px;
-  cursor: pointer;
-}
-#bg-select:hover { border-color: var(--dim); }
-
-input[type="range"] {
-  flex: 1;
-  min-width: 0;
-  height: 14px;
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-.opt-row .val {
-  width: 30px;
-  font-size: 9px;
-  color: var(--dim);
-  text-align: right;
-  flex: none;
-}
-
-#info { font-size: 10px; color: var(--dim); }
-.help { font-size: 10px; color: var(--dim); margin-top: 6px; line-height: 1.6; }
-.hidden { display: none; }
-#btn-3d.selected { color: #fff; }
-#stat-fps, #stat-parts { color: var(--text); }
-
-/* ---- folding sections ---------------------------------------------------- */
-summary { list-style: none; cursor: pointer; }
-summary::-webkit-details-marker { display: none; }
-summary h2::after { content: "\25BE"; margin-left: 5px; }
-details:not([open]) > summary h2::after { content: "\25B8"; }
-details:not([open]) > summary h2 { margin-bottom: 0; }
-
-/* ---- small windows: the sidebar slides over the field ----------------------
-   A button in the corner shows what the pen draws and opens the sidebar over the field; drawing closes it.
-   On a tall narrow screen (a phone held upright) it comes up from the bottom instead. */
-#panel-btn, #panel-close { display: none; }
-
-@media (pointer: coarse) {
-  :root { --sidebar-w: 248px; }
-  button, #bg-select { font-size: 12px; min-height: 30px; }
-  #palette button, #tools button { padding: 6px; }
-  .swatch { width: 11px; height: 11px; }
-  input[type="range"] { height: 26px; }
-  .opt-row label, .opt-row .val, .section h2, #info, .help { font-size: 11px; }
-}
-
+/* ---- a small window: the column slides over the field ------------------------------------------------------------ */
 @media (max-width: 860px) {
-  #game { width: 100vw; }
+  :root { --side-w: 0px; }
+  #actions { top: 8px; left: 8px; }
+  #corner { top: 8px; right: 8px; }
+  #options-wrap { top: 48px; right: 8px; max-width: calc(100vw - 16px); max-height: calc(100vh - var(--bar-h) - 56px); }
   #sidebar {
-    width: min(var(--sidebar-w), 100vw);
-    z-index: 2;
+    z-index: 4;
+    width: min(300px, 100vw);
     box-shadow: -8px 0 24px rgba(0, 0, 0, .55);
     transform: translateX(100%);
     visibility: hidden;
-    transition: transform .18s ease-out, visibility 0s linear .18s;
+    transition: transform var(--duration-fast) var(--ease-out), visibility 0s linear var(--duration-fast);
   }
-  #sidebar.open { transform: none; visibility: visible; transition: transform .18s ease-out; }
-  #panel-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    position: fixed;
-    top: 8px; right: 8px;
-    z-index: 1;
-    padding: 6px 8px;
-    font-size: 11px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, .5);
-  }
-  #panel-btn .menu { color: var(--dim); margin-left: 2px; }
-  #panel-close {
-    display: block;
-    position: absolute;
-    top: 8px; right: 8px;
-    padding: 2px 7px;
-    color: var(--dim);
+  #sidebar.open { transform: none; visibility: visible; transition: transform var(--duration-fast) var(--ease-out); }
+  #toolbar { padding: 0 10px; gap: 10px; }
+}
+@media (max-width: 860px) and (orientation: portrait) {
+  #sidebar {
+    top: auto; bottom: var(--bar-h);
+    width: 100%; height: auto; max-height: 62vh;
+    border-left: 0; border-top: 1px solid var(--line);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .55);
+    transform: translateY(calc(100% + var(--bar-h)));
   }
 }
 
-@media (max-width: 860px) and (orientation: portrait) {
-  #sidebar {
-    top: auto; bottom: 0;
-    width: 100%;
-    height: auto;
-    max-height: 62vh;
-    border-left: 0;
-    border-top: 1px solid var(--border);
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, .55);
-    transform: translateY(100%);
-  }
-  .btn-grid { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); }
+/* a phone held upright: the dot count goes, so the actions and Options share the top */
+@media (max-width: 480px) { .pg-read > span + span { display: none; } }
+
+/* touch: bigger targets */
+@media (pointer: coarse) {
+  .pg-chip { height: 32px; font-size: 12px; }
+  .ag-btn--sm { --ag-h: 32px; }
+  .ag-seg--sm, .ag-seg--sm button { height: 32px; }
+  .ag-seg--sm::before, .ag-seg--sm::after { line-height: 32px; }
+  .ag-seg--sm button { min-width: 36px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -59,8 +59,11 @@ http://localhost:8741
 
 - Left-drag draws the selected element or tool.
 - Right-drag erases.
-- Use the sidebar to choose elements, tools, pen size, speed, scale, liquid mode, wave mode, background mode, and field dimensions. Its sections fold; a sidebar taller than the window starts with Options folded.
-- In a window 860px wide or less the field takes the whole window and the sidebar slides over it: the button in the top corner (it shows what the pen draws) opens it, and drawing closes it. On a phone held upright it comes up from the bottom. Touch screens get bigger buttons.
+- The column on the right holds the elements, grouped by state: powders, liquids, gases, solids, energy and life.
+- The toolbar along the bottom holds the tools (wind, cyclone, block, erase, player), the pen size, and 3D: the switch, then what to draw on (slice, top or floor) and the slice.
+- Pause, Clear, Save and Load sit over the field's top left, with the frame rate and the dot count.
+- Options, over the field's top right, holds scale, speed, liquid mode, wave mode, the backdrop, the field's dimensions and how to play.
+- In a window 860px wide or less the field takes the whole window and the column slides over it: the button in the top corner (it shows what the pen draws) opens it, and drawing closes it. The tools join the column there, and Clear, Save and Load move into Options. On a phone held upright the column comes up from the bottom. Touch screens get bigger buttons.
 - Press `p` or the Pause button to pause the simulation.
 - Use Save and Load for 2D localStorage saves.
 - In 3D mode, drag outside the box or middle-drag to orbit, use the mouse wheel to zoom, and use `[` / `]` to move between slices.
@@ -70,7 +73,9 @@ http://localhost:8741
 
 ```text
 index.html          Page markup and script loading order
-style.css           Canvas and sidebar styling
+anero.css           The Anero theme: tokens and controls from the Anero Grid design system
+style.css           The layout: field, elements column, toolbar, Options
+fonts/              Unbounded and Doto, with their licences (SIL OFL 1.1)
 serve.py            Tiny no-cache development server
 js/elements.js      Element registry and color tables
 js/backgrounds.js   Background and visualization modes
