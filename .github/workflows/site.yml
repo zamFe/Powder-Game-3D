@@ -1,0 +1,22 @@
+name: Tell the site
+
+# Powder Game 3D runs on Felix's portfolio (zamFe/anero-portfolio), which serves this repository's files at a pinned
+# commit. On each push to main that changes the game's files, this asks the portfolio to move to the new commit: its
+# "Game sources" workflow fetches it, checks the site with it, and deploys it.
+#
+# Needs the secret SITE_DISPATCH_TOKEN: a fine-grained personal access token for zamFe/anero-portfolio with
+# Contents: read and write.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", ".claude/**", "**.py"]   # files the site doesn't serve
+  workflow_dispatch:
+
+jobs:
+  tell-the-site:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask the portfolio to update
+        run: gh api repos/zamFe/anero-portfolio/dispatches -f event_type=game-source
+        env:
+          GH_TOKEN: ${{ secrets.SITE_DISPATCH_TOKEN }}
