@@ -59,7 +59,8 @@ http://localhost:8741
 
 - Left-drag draws the selected element or tool.
 - Right-drag erases.
-- Use the sidebar to choose elements, tools, pen size, speed, scale, liquid mode, wave mode, background mode, and field dimensions.
+- Use the sidebar to choose elements, tools, pen size, speed, scale, liquid mode, wave mode, background mode, and field dimensions. Its sections fold; a sidebar taller than the window starts with Options folded.
+- In a window 860px wide or less the field takes the whole window and the sidebar slides over it: the button in the top corner (it shows what the pen draws) opens it, and drawing closes it. On a phone held upright it comes up from the bottom. Touch screens get bigger buttons.
 - Press `p` or the Pause button to pause the simulation.
 - Use Save and Load for 2D localStorage saves.
 - In 3D mode, drag outside the box or middle-drag to orbit, use the mouse wheel to zoom, and use `[` / `]` to move between slices.
