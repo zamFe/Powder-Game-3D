@@ -31,8 +31,11 @@
     PG.viewOffY = Math.max(0, canvas.height - PG.H * PG.scale);
   }
 
+  const toolbar = document.getElementById("toolbar");
   function rebuild() {
     instantExit3D();
+    // the field's height leaves the toolbar's, which wraps in a small window held upright
+    document.documentElement.style.setProperty("--bar-h", toolbar.offsetHeight + "px");
     const vw = canvas.clientWidth, vh = canvas.clientHeight; // the window less the sidebar, when it sits beside the field
     canvas.width = vw; canvas.height = vh;
     const [tw, th] = targetDims();
@@ -301,7 +304,8 @@
   // ---- the controls ---------------------------------------------------------
   // The elements are a column on the right, by state; the tools, the pen and 3D are a toolbar along the bottom; the
   // scene's actions sit over the field's top left and Options opens from its top right. In a small window the column
-  // slides over the field: the corner chip opens it and shows what the pen draws, and the tools are in it too.
+  // slides over the field: the chip opens it and shows what the pen draws, and the tools are in it too; the chip, the
+  // actions and Options join the toolbar (style.css).
   const sidebar = document.getElementById("sidebar");
   const panelBtn = document.getElementById("panel-btn");
   const optBtn = document.getElementById("btn-options");
@@ -319,7 +323,7 @@
   panelBtn.addEventListener("click", () => { setOptions(false); setPanel(!sidebar.classList.contains("open")); });
   document.getElementById("panel-close").addEventListener("click", () => { setPanel(false); panelBtn.focus(); });
   optBtn.addEventListener("click", () => { setPanel(false); setOptions(optWrap.classList.contains("hidden")); });
-  window.matchMedia("(max-width: 860px)").addEventListener("change", () => setPanel(false));
+  window.matchMedia("(max-width: 860px), (max-height: 540px)").addEventListener("change", () => setPanel(false));
   function showCurrent(name, color) {
     document.getElementById("cur-name").textContent = name;
     document.getElementById("cur-swatch").style.setProperty("--c", color);

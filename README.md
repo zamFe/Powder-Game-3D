@@ -63,7 +63,7 @@ http://localhost:8741
 - The toolbar along the bottom holds the tools (wind, cyclone, block, erase, player), the pen size, and 3D: the switch, then what to draw on (slice, top or floor) and the slice.
 - Pause, Clear, Save and Load sit over the field's top left, with the frame rate and the dot count.
 - Options, over the field's top right, holds scale, speed, liquid mode, wave mode, the backdrop, the field's dimensions and how to play.
-- In a window 860px wide or less the field takes the whole window and the column slides over it: the button in the top corner (it shows what the pen draws) opens it, and drawing closes it. The tools join the column there, and Clear, Save and Load move into Options. On a phone held upright the column comes up from the bottom. Touch screens get bigger buttons.
+- In a small window (860px wide or less, or 540px tall or less, as on a phone either way up) the field takes the whole window and the column slides over it. Nothing sits over the field: everything moves into the toolbar along the bottom, starting with the button that shows what the pen draws and opens the column (drawing closes it), then Pause, the pen, 3D, and Options, which stays in sight at the end while the rest scrolls. The tools join the column, and Clear, Save and Load move into Options. On a phone held upright the toolbar takes two rows, with the pen and 3D on the second, and the column comes up from the bottom. Touch screens get bigger buttons.
 - Press `p` or the Pause button to pause the simulation.
 - Use Save and Load for 2D localStorage saves.
 - In 3D mode, drag outside the box or middle-drag to orbit, use the mouse wheel to zoom, and use `[` / `]` to move between slices.

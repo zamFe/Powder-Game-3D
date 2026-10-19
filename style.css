@@ -1,10 +1,12 @@
 /* Powder Game's layout, in the Anero theme (anero.css holds its tokens and parts). The field fills the window less the
    elements column on the right and the toolbar along the bottom; the scene's actions sit over its top left corner and
-   Options over its top right. In a window 860px wide or less the field takes the whole width and the column slides over
-   it (up from the bottom on a phone held upright); the tools join the column, and Clear, Save and Load go into Options. */
+   Options over its top right. In a small window (860px wide or less, or 540px tall or less: a phone either way up) the
+   field takes the whole width and the column slides over it (up from the bottom on a phone held upright); the tools join
+   the column, Clear, Save and Load go into Options, and everything else goes into the toolbar, so nothing sits over the
+   field. The toolbar's height is measured (--bar-h, set by ui.js), since in a small window it wraps. */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-:root { --side-w: 300px; --bar-h: 52px; }
+:root { --side-w: 300px; --bar-h: 52px; }   /* --bar-h: the toolbar's height, kept current by ui.js */
 
 html, body {
   width: 100%; height: 100%;
@@ -20,14 +22,15 @@ html, body {
 }
 button { font: inherit; }
 .hidden { display: none !important; }
-@media (min-width: 861px) { .pg-small { display: none !important; } }
-@media (max-width: 860px) { .pg-roomy { display: none !important; } }
+@media (min-width: 861px) and (min-height: 541px) { .pg-small { display: none !important; } }
+@media (max-width: 860px), (max-height: 540px) { .pg-roomy { display: none !important; } }
 
 #game {
   position: fixed;
   left: 0; top: 0;
   width: calc(100vw - var(--side-w));
   height: calc(100vh - var(--bar-h));
+  height: calc(100dvh - var(--bar-h));
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   background: #000;
@@ -52,6 +55,7 @@ button { font: inherit; }
   z-index: 3;
   width: 380px; max-width: calc(100vw - 24px);
   max-height: calc(100vh - var(--bar-h) - 64px);
+  max-height: calc(100dvh - var(--bar-h) - 64px);
   overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--line) transparent;
   background: var(--bg);          /* the panel's own fill is a veil: this keeps the field from showing through */
@@ -73,6 +77,7 @@ button { font: inherit; }
   z-index: 1;
   width: var(--side-w);
   height: calc(100vh - var(--bar-h));
+  height: calc(100dvh - var(--bar-h));
   padding: 16px;
   display: grid; align-content: start; gap: 10px;
   overflow-x: hidden; overflow-y: auto;
@@ -107,7 +112,7 @@ button { font: inherit; }
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 1;
-  height: var(--bar-h);
+  height: 52px;
   display: flex; align-items: center; gap: 12px;
   padding: 0 16px;
   background: var(--bg);
@@ -120,17 +125,15 @@ button { font: inherit; }
 #toolbar .pg-chips { flex-wrap: nowrap; }
 .pg-sep { width: 1px; align-self: stretch; margin: 10px 4px; background: var(--line); flex: none; }
 .pg-gap { flex: 1; }
+.pg-strip { display: contents; }
 #toolbar .ag-switch { font-size: 13px; letter-spacing: .12em; }
 .pg-3d { display: flex; align-items: center; gap: 12px; }
 .pg-step { display: inline-flex; align-items: center; }
 .pg-step output { min-width: 4ch; text-align: center; font-family: var(--font-led); font-weight: 800; font-size: 15px; text-shadow: var(--glow-text-1); }
 
-/* ---- a small window: the column slides over the field ------------------------------------------------------------ */
-@media (max-width: 860px) {
+/* ---- a small window: the column slides over the field, and the controls all go into the toolbar ---------------- */
+@media (max-width: 860px), (max-height: 540px) {
   :root { --side-w: 0px; }
-  #actions { top: 8px; left: 8px; }
-  #corner { top: 8px; right: 8px; }
-  #options-wrap { top: 48px; right: 8px; max-width: calc(100vw - 16px); max-height: calc(100vh - var(--bar-h) - 56px); }
   #sidebar {
     z-index: 4;
     width: min(300px, 100vw);
@@ -140,9 +143,33 @@ button { font: inherit; }
     transition: transform var(--duration-fast) var(--ease-out), visibility 0s linear var(--duration-fast);
   }
   #sidebar.open { transform: none; visibility: visible; transition: transform var(--duration-fast) var(--ease-out); }
-  #toolbar { padding: 0 10px; gap: 10px; }
+
+  /* the toolbar: what the pen draws, Pause, the pen, 3D, then the readouts and Options at the end */
+  #toolbar { height: auto; min-height: 44px; padding: 6px 16px; gap: 8px 10px; }
+  #actions, #corner { display: contents; }
+  #panel-btn { order: 1; }
+  #btn-pause { order: 2; }
+  .pg-strip > * { order: 3; }
+  .pg-gap, .pg-read { order: 4; }
+  /* Options stays in sight at the end while the rest scrolls under it */
+  #btn-options { order: 9; position: sticky; right: 0; z-index: 1; box-shadow: -10px 0 0 var(--bg); background: linear-gradient(var(--veil), var(--veil)) var(--bg); }
+  #btn-options:hover { background: linear-gradient(var(--veil-hi), var(--veil-hi)) var(--bg); }
+  /* Options opens upwards from the toolbar */
+  #options-wrap { top: auto; bottom: calc(var(--bar-h) + 8px); right: 8px; max-width: calc(100vw - 16px); max-height: calc(100vh - var(--bar-h) - 16px); max-height: calc(100dvh - var(--bar-h) - 16px); }
 }
-@media (max-width: 860px) and (orientation: portrait) {
+/* held upright: two rows, what the pen draws, Pause, the readouts and Options; then the pen and 3D, which scroll */
+@media (max-width: 860px) and (min-height: 541px) and (orientation: portrait) {
+  #toolbar { flex-wrap: wrap; overflow-x: hidden; }
+  .pg-strip {
+    order: 10; flex: 0 0 100%;
+    display: flex; align-items: center; gap: 10px;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .pg-strip::-webkit-scrollbar { display: none; }
+  .pg-strip > * { flex: none; }
+  .pg-strip > .pg-gap { order: 3; flex: 1; }
+  .pg-read { margin-left: auto; }
+  #btn-options { position: static; box-shadow: none; }
   #sidebar {
     top: auto; bottom: var(--bar-h);
     width: 100%; height: auto; max-height: 62vh;
@@ -151,8 +178,12 @@ button { font: inherit; }
     transform: translateY(calc(100% + var(--bar-h)));
   }
 }
+/* short (a phone turned sideways, a page's game screen): one row that scrolls, and the field keeps the height */
+@media (max-height: 540px) {
+  .pg-read { display: none; }
+}
 
-/* a phone held upright: the dot count goes, so the actions and Options share the top */
+/* a phone held upright: the dot count goes, so the first row fits */
 @media (max-width: 480px) { .pg-read > span + span { display: none; } }
 
 /* touch: bigger targets */

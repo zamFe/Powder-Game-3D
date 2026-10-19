@@ -10,21 +10,6 @@
 <body>
 <canvas id="game"></canvas>
 
-<!-- top left: the scene's actions and the readouts -->
-<div id="actions" class="pg-float">
-  <button id="btn-pause" class="ag-btn ag-btn--sm">Pause</button>
-  <button id="btn-clear" class="ag-btn ag-btn--sm ag-btn--secondary pg-roomy">Clear</button>
-  <button id="btn-save" class="ag-btn ag-btn--sm ag-btn--secondary pg-roomy">Save</button>
-  <button id="btn-load" class="ag-btn ag-btn--sm ag-btn--secondary pg-roomy">Load</button>
-  <div class="ag-led pg-read"><span><span id="stat-fps">0</span><b>FPS</b></span><span><span id="stat-parts">0</span><b>DOTS</b></span></div>
-</div>
-
-<!-- top right of the field: Options, and in a small window the button that opens the elements over the field -->
-<div id="corner" class="pg-float">
-  <button id="btn-options" class="ag-btn ag-btn--sm ag-btn--curly" aria-controls="options" aria-expanded="false">Options</button>
-  <button id="panel-btn" class="pg-chip on pg-small" aria-controls="sidebar" aria-expanded="false"><i id="cur-swatch"></i><span id="cur-name">powder</span></button>
-</div>
-
 <div id="options-wrap" class="pg-float hidden">
   <section id="options" class="ag-panel ag-panel--chamfer" aria-label="Options">
     <div class="pg-small pg-row"><span class="ag-lab">Scene</span><div class="pg-btns">
@@ -60,33 +45,50 @@
   <div id="palette"></div>
 </aside>
 
-<!-- the toolbar along the bottom: tools, pen, 3D -->
+<!-- the toolbar along the bottom: tools, pen, 3D; in a small window it holds the actions and Options too -->
 <footer id="toolbar" aria-label="Tools">
+  <!-- over the field's top left: the scene's actions and the readouts (in a small window, in the toolbar) -->
+  <div id="actions" class="pg-float">
+    <button id="btn-pause" class="ag-btn ag-btn--sm">Pause</button>
+    <button id="btn-clear" class="ag-btn ag-btn--sm ag-btn--secondary pg-roomy">Clear</button>
+    <button id="btn-save" class="ag-btn ag-btn--sm ag-btn--secondary pg-roomy">Save</button>
+    <button id="btn-load" class="ag-btn ag-btn--sm ag-btn--secondary pg-roomy">Load</button>
+    <div class="ag-led pg-read"><span><span id="stat-fps">0</span><b>FPS</b></span><span><span id="stat-parts">0</span><b>DOTS</b></span></div>
+  </div>
+
+  <!-- over the field's top right: Options, and in a small window the button that opens the elements over the field -->
+  <div id="corner" class="pg-float">
+    <button id="btn-options" class="ag-btn ag-btn--sm ag-btn--curly" aria-controls="options" aria-expanded="false">Options</button>
+    <button id="panel-btn" class="pg-chip on pg-small" aria-controls="sidebar" aria-expanded="false"><i id="cur-swatch"></i><span id="cur-name">powder</span></button>
+  </div>
   <div id="tools" class="pg-chips pg-roomy" role="group" aria-label="Tools"></div>
   <span class="pg-sep pg-roomy"></span>
-  <div id="pen-sizes" class="ag-seg ag-seg--sm" role="group" aria-label="Pen size"></div>
-  <span class="pg-gap"></span>
-  <label class="ag-switch"><input id="sw-3d" type="checkbox" role="switch"><span class="ag-switch-track"></span><span class="ag-switch-state"></span>3D</label>
-  <div id="threed-controls" class="pg-3d hidden">
-    <div id="draw3d-btns" class="ag-seg ag-seg--sm" role="group" aria-label="Draw on"></div>
-    <div class="pg-step">
-      <button id="slice-minus" class="ag-btn ag-btn--sm ag-btn--secondary" aria-label="Slice back">&#8722;</button>
-      <output id="slice-val" aria-label="Slice">0</output>
-      <button id="slice-plus" class="ag-btn ag-btn--sm ag-btn--secondary" aria-label="Slice forward">+</button>
+  <!-- the pen and 3D (held upright, a row of their own) -->
+  <div class="pg-strip">
+    <div id="pen-sizes" class="ag-seg ag-seg--sm" role="group" aria-label="Pen size"></div>
+    <span class="pg-gap"></span>
+    <label class="ag-switch"><input id="sw-3d" type="checkbox" role="switch"><span class="ag-switch-track"></span><span class="ag-switch-state"></span>3D</label>
+    <div id="threed-controls" class="pg-3d hidden">
+      <div id="draw3d-btns" class="ag-seg ag-seg--sm" role="group" aria-label="Draw on"></div>
+      <div class="pg-step">
+        <button id="slice-minus" class="ag-btn ag-btn--sm ag-btn--secondary" aria-label="Slice back">&#8722;</button>
+        <output id="slice-val" aria-label="Slice">0</output>
+        <button id="slice-plus" class="ag-btn ag-btn--sm ag-btn--secondary" aria-label="Slice forward">+</button>
+      </div>
     </div>
   </div>
 </footer>
 
-<script src="js/elements.js?v=4"></script>
-<script src="js/backgrounds.js?v=4"></script>
-<script src="js/air.js?v=4"></script>
-<script src="js/engine.js?v=4"></script>
-<script src="js/behaviors.js?v=4"></script>
-<script src="js/engine3d.js?v=4"></script>
-<script src="js/behaviors3d.js?v=4"></script>
-<script src="js/render3d.js?v=4"></script>
-<script src="js/player.js?v=4"></script>
-<script src="js/render.js?v=4"></script>
-<script src="js/ui.js?v=4"></script>
+<script src="js/elements.js?v=5"></script>
+<script src="js/backgrounds.js?v=5"></script>
+<script src="js/air.js?v=5"></script>
+<script src="js/engine.js?v=5"></script>
+<script src="js/behaviors.js?v=5"></script>
+<script src="js/engine3d.js?v=5"></script>
+<script src="js/behaviors3d.js?v=5"></script>
+<script src="js/render3d.js?v=5"></script>
+<script src="js/player.js?v=5"></script>
+<script src="js/render.js?v=5"></script>
+<script src="js/ui.js?v=5"></script>
 </body>
 </html>
